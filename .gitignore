@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vercel/
+.env
+.env.*
+*.log
+validation-report.json
+static-validation-report.json
+screenshots/
+.DS_Store
+Thumbs.db

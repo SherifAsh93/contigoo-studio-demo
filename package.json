@@ -1,0 +1,17 @@
+{
+  "name": "contigoo-studio-prototype",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive local concept sample. Synthetic data and browser-local persistence only.",
+  "scripts": {
+    "start": "node server.mjs",
+    "build": "node build.mjs",
+    "test": "node verify.mjs",
+    "test:static": "node verify-static.mjs"
+  },
+  "engines": { "node": ">=22.13.0" },
+  "devDependencies": {
+    "puppeteer-core": "25.11.0"
+  }
+}

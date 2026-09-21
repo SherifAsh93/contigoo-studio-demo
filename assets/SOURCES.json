@@ -1,0 +1,25 @@
+[
+  {
+    "file": "logo.png",
+    "source": "Contigoo website brand assets, previously cached for the project",
+    "sha256": "cf873036e162348f1de5c43b53742f47d545996236b8f83bb5f07dea236a39a8"
+  },
+  {
+    "file": "inter.woff2",
+    "source": "Contigoo website brand assets, previously cached for the project",
+    "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4"
+  },
+  {
+    "file": "fraunces.woff2",
+    "source": "Contigoo website brand assets, previously cached for the project",
+    "sha256": "94bb7e04bb1a32237a67935c72526e42a3e52ee4aebd50299802b18a93114251"
+  },
+  {
+    "file": "Inter-OFL.txt",
+    "source": "https://raw.githubusercontent.com/rsms/inter/master/LICENSE.txt"
+  },
+  {
+    "file": "Fraunces-OFL.txt",
+    "source": "https://raw.githubusercontent.com/undercasetype/Fraunces/master/OFL.txt"
+  }
+]
