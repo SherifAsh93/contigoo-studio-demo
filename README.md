@@ -127,7 +127,7 @@ This does not generate APK/IPA files, publish to app stores or install a PWA. Na
 - The **App price** tab changes that app's price only for the selected client.
 - **Export quote JSON** saves line items and totals in minor units (EGP piasters).
 - Amounts are illustrative, admin-editable EGP values; they are not current Contigoo commercial rates. Tax and usage charges are excluded; nothing is charged.
-- **Publish solution** retains a version of app definitions, selected apps and project prices, visible under Manage → Publication history. Later changes remain drafts. Publication is committed only if browser persistence succeeds. This is local publication, not deployment or invoicing.
+- **Save demo version** (previously Publish solution) retains a snapshot of app definitions, selected apps and project prices. **View saved version** opens it directly beside the builder; **Preview draft** shows your latest edits. Earlier snapshots remain under Manage → Publication history. Saving succeeds only if browser persistence succeeds. This does not create a separate hosted app URL or invoice.
 
 ### Other sample features
 

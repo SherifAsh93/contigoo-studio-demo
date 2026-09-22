@@ -26,6 +26,7 @@
 @media(max-width:720px){.workspace-onboarding{padding:20px}.workspace-onboarding ol{grid-template-columns:1fr}.management-panel{padding:19px}.management-panel .section-heading{flex-wrap:wrap;gap:10px}.project-state-strip{font-size:11px}.publication-item .button{font-size:11px}.workspace-onboarding .button{font-size:11px}}
 .danger-text,.button.danger-text{color:#a44232}.button.danger{background:#a44232;color:#fffdf9}.button.danger:hover{background:#873728}
 .client-management-actions{flex-wrap:wrap}
+.demo-save-strip{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 18px;margin-bottom:20px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.demo-save-strip p{flex:1;min-width:220px;font-size:11px}.demo-save-strip>span{font-size:11px}.demo-save-strip .button{font-size:11px}
 .data-concepts{padding:15px;background:#edf1e5;border:1px solid #d9dfce;border-radius:9px;margin:14px 0}.data-concepts p{font-size:11px;margin:0 0 8px;color:#66745d}.data-concepts p:last-child{margin:0}
 .shared-entity-list{margin:16px 0 22px}.shared-entity-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:12px 0;border-bottom:1px solid var(--line)}.shared-entity-row>div{min-width:0;overflow-wrap:anywhere}.shared-entity-row small{display:block;color:var(--muted);margin-top:3px}.shared-entity-row .text-button{flex-shrink:0;font-size:11px}
 .shared-field-controls{border:0;margin:0;padding:0;min-width:0}.shared-field-controls:disabled{opacity:.55}

@@ -440,14 +440,20 @@ try {
   assert((await page.$eval('#draft-badge', node => node.textContent)).includes('Demo version 1'));
   const published = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(client => client.id === 'atlas').published, STORAGE_KEY);
   assert.equal(published.name, 'Atlas Custom'); assert(published.fields.some(field => field.label === 'Delivery date'));
+  assert(await page.$eval('#toast', node => node.textContent.includes('saved successfully')));
   await page.click('[data-tab="brand"]');
   await fill('#brand-name', 'Unpublished change');
   const snapshotName = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(client => client.id === 'atlas').published.name, STORAGE_KEY);
   assert.equal(snapshotName, 'Atlas Custom');
+  await page.click('.demo-save-strip [data-preview-mode="published"]');
+  assert(await page.$eval('#dialog .client-top', node => node.textContent.includes('Atlas Custom') && !node.textContent.includes('Unpublished change')));
+  await page.click('#dialog [data-preview-mode="draft"]');
+  assert(await page.$eval('#dialog .client-top', node => node.textContent.includes('Unpublished change')));
+  await page.click('[data-action="close-dialog"]');
   await page.reload({ waitUntil: 'networkidle0' });
   await openProject(); await page.click('[data-tab="brand"]');
   assert.equal(await page.$eval('#brand-name', node => node.value), 'Unpublished change');
-  results.push({ name: 'Demo publication snapshots config; subsequent edits and reload preserve draft/published separation', status: 'passed' });
+  results.push({ name: 'Saving a demo version reports success; View saved version opens the snapshot and distinguishes later draft edits across reloads', status: 'passed' });
 
   await page.click('[data-nav="builder"]'); await page.click('[data-action="new-project"]');
   await page.select('#new-project-template', 'erp-framework');

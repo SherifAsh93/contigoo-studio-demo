@@ -192,7 +192,8 @@ function appsView() {
 function builder() {
   const client = current();
   enhanceState(state);
-  return `<div class="project-navigation"><button class="text-button" data-nav="builder">← All projects</button><button class="text-button" data-manage-project="${client.id}">Manage project</button><button class="text-button" data-client-profile="${client.clientId}">Client: ${esc(ownerFor(client)?.name)}</button><button class="text-button" data-action="project-details">Edit project details</button></div>${pageTitle('STUDIO / SOLUTION BUILDER', esc(client.name), esc(client.description || 'Select an app or create your own. Configure, preview, then publish this project.'), `<div class="heading-actions"><button class="button secondary" data-preview="${client.id}">${icon('eye', 17)} Preview</button><button id="publish-button" class="button primary" data-action="publish">${icon('upload', 17)} Publish solution</button></div>`)}
+  return `<div class="project-navigation"><button class="text-button" data-nav="builder">← All projects</button><button class="text-button" data-manage-project="${client.id}">Manage project</button><button class="text-button" data-client-profile="${client.clientId}">Client: ${esc(ownerFor(client)?.name)}</button><button class="text-button" data-action="project-details">Edit project details</button></div>${pageTitle('STUDIO / SOLUTION BUILDER', esc(client.name), esc(client.description || 'Select an app or create your own. Configure, preview, then save a demo version.'), `<div class="heading-actions"><button class="button secondary" data-preview="${client.id}">${icon('eye', 17)} Preview draft</button><button id="publish-button" class="button primary" data-action="publish">${icon('upload', 17)} Save demo version</button></div>`)}
+  <div class="demo-save-strip"><p>Demo versions save your configuration and quote in this browser. They do not create a separate hosted app URL.</p>${client.published ? `<button class="button secondary" data-preview-mode="published" data-client="${client.id}">${icon('eye', 16)} View saved version</button>` : '<span class="muted">Save your first version, then view it here.</span>'}</div>
   <section class="solution-bar"><div class="solution-identity">${logo(client.draft, 'small-logo')}<label class="client-picker"><span>CURRENT PROJECT</span><select id="client-select" aria-label="Select project">${projectOptions()}</select></label></div><div class="solution-status"><span id="draft-badge" class="badge ${client.dirty ? 'draft' : 'published'}">${client.dirty ? 'Draft changes' : `Demo version ${client.version}`}</span><span class="separator"></span><span>${icon('lock', 14)} Project-specific configuration</span></div></section>
   ${studio.quoteBanner()}
   <div class="builder-grid"><section class="configuration-panel"><div class="builder-tabs" role="tablist" aria-label="Solution configuration">${[['apps', 'Apps'], ['brand', 'Branding'], ['fields', 'Shared data'], ['access', 'Access'], ['pricing', 'Pricing']].map(([id, label]) => `<button role="tab" aria-selected="${tab === id}" class="${tab === id ? 'active' : ''}" data-tab="${id}">${label}</button>`).join('')}</div><div class="configuration-body">${({ apps: appConfig, brand: brandConfig, fields: fieldConfig, access: accessConfig, pricing: studio.pricingView })[tab]()}</div></section><aside class="preview-panel"><div class="preview-label"><span><span class="live-dot"></span> SOLUTION APPEARANCE</span><button class="text-button" data-preview="${client.id}" aria-label="Expand preview">${icon('external', 16)}</button></div><div id="live-preview">${solutionPreview(client, true)}</div><div class="preview-footnote">${icon('eye', 15)} For working forms and lists, use Preview app on its card.</div><div class="foundation-note">${icon('layers', 20)}<div><strong>Your apps, your solution</strong><span>Use Edit app for app-specific data, pages and workflows. Shared data above preserves your earlier client-wide fields.</span></div></div></aside></div>`;
@@ -241,7 +242,7 @@ function workspacePreview(config, mini) {
 
 function solutionPreview(client, mini, published = false) {
   const config = published ? client.published : client.draft;
-  if (!config) return '<div class="empty-state">No published demo version yet. Publish from the builder first.</div>';
+  if (!config) return '<div class="empty-state">No saved demo version yet. Choose Save demo version in the builder first.</div>';
   return `<div class="browser-frame"><div class="browser-chrome"><span class="browser-dots"><i></i><i></i><i></i></span><span>${icon('lock', 10)} ${mini ? 'Client experience · preview' : `${esc(config.name)} · ${published ? `demo published v${client.version}` : 'draft preview'}`}</span><span></span></div>${config.apps.includes('commerce') ? storefront(config, mini) : workspacePreview(config, mini)}</div>`;
 }
 
@@ -506,8 +507,8 @@ document.addEventListener('click', event => {
       const published = structuredClone(current());
       publishClient(published);
       const next = { ...state, clients: state.clients.map(project => project.id === published.id ? published : project) };
-      persistManagementChange(next, 'A solution is ready to share', `${published.name} · demo version ${published.version}`);
-      render(); toast(`Demo version ${published.version} saved locally. No public deployment has occurred.`);
+      persistManagementChange(next, 'A demo version was saved', `${published.name} · demo version ${published.version}`);
+      render(); toast(`Demo version ${published.version} saved successfully. Choose “View saved version” to see it.`);
     }
     catch (error) { toast(error.message); }
   }
