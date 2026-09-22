@@ -51,6 +51,8 @@ Each browser has its own demo data. Localhost projects do not automatically appe
 
 **Clients → Create client.** Only the client/business name is required. Industry, contact person, email, phone, address and notes are optional. Saving opens the client profile with a related **Projects** list; creating a client does not create an empty solution or quote.
 
+Create/edit dialogs use paired fields on wider screens and a single column on mobile. The title and Cancel/Save controls stay visible while only the fields scroll, including on short viewports. Labels have space for the keyboard-focus outline.
+
 Every row has **View**, **Edit**, **Delete** and **+ Project** actions. Use **Edit** directly from the list, or **View → Edit client details**, to update business/contact information. Search by client name, industry, contact, email or phone. The client count reflects clients, not projects.
 
 **Delete** is available in the list and the client profile. Its confirmation names the client and lists any related projects. Clients without projects need only the final **Delete client** confirmation. For clients with projects, explicitly check **Also delete these projects and their saved demo data**, then choose **Delete client & projects**. This removes the client profile and those projects, including their configuration, records, workflow logs, quotes and published snapshots. Other clients, shared app templates and default prices remain available. Cancel keeps everything; a browser-storage failure also keeps the active client/projects and reports the failure. Deleted clients stay deleted after reloading, including when the directory becomes empty.
@@ -72,6 +74,8 @@ One client can own zero, one or several projects. Projects have independent app 
 ### Start with a project, not an industry product
 
 **Create new project → Start from scratch** is the default. Choose modules freely on the next screen. Optional **Framework starters** are CRM, ERP / Business suite, Finance, Inventory & Operations, HR & People, Website & E-commerce, Service & Support, and Custom workflows. Their module selections are visible before creation and remain editable.
+
+**Custom workflows** preselects Management and Projects for processes such as requests and task tracking. Configure the fields, pages and simple rules yourself; it does not automatically implement a complete approval process.
 
 Earlier names such as “Noura Restaurant” were fictional fixtures, not real clients. New workspaces no longer insert them. The historical fixtures are in `test-fixtures.mjs`, excluded from the served/deployed files. Existing saved examples and user-created projects are preserved; review, rename or delete them through Clients. Legacy starter identifiers remain compatible but are not offered in creation.
 
@@ -128,7 +132,7 @@ Tests use the pinned Puppeteer Core development dependency and an installed Chro
 
 `npm run test:static` builds the allowlisted `dist/` output and verifies assets, module loading, project creation, pricing and generated forms beneath the GitHub Pages URL prefix. Planning documents, credentials, localStorage contents, test output and development files are excluded from the site build.
 
-The 42 model/browser checks cover empty-first onboarding, unified project creation, client CRUD, project management/daily use, archive/reactivate, independent project deletion, version history/preview, storage failures, client isolation in local state, compatibility/migration, app building/reuse, quotes, rules, safe rendering and desktop/mobile layouts. Static checks cover the core journey beneath the GitHub Pages repository subpath. They do not prove backend security, AI integration or production readiness. Screenshots with named sample clients use explicitly injected test fixtures, not default workspace data.
+The 43 model/browser checks cover empty-first onboarding, unified project creation, client CRUD, project management/daily use, archive/reactivate, independent project deletion, version history/preview, storage failures, client isolation in local state, compatibility/migration, app building/reuse, quotes, rules, safe rendering and desktop/mobile layouts. Client-dialog checks verify visible/clickable actions, contained scrolling, focus spacing, retained input and validation at desktop, 1024×664, 667×830, mobile and 390×500 viewports. Static checks cover the core journey beneath the GitHub Pages repository subpath. They do not prove backend security, AI integration or production readiness. Screenshots with named sample clients use explicitly injected test fixtures, not default workspace data.
 
 - `validation-report.json`: completed prototype checks.
 - `screenshots/01-studio-overview.png`: your administrator overview.
@@ -147,5 +151,7 @@ The 42 model/browser checks cover empty-first onboarding, unified project creati
 - `screenshots/14-client-delete.png`: explicit client/related-project deletion confirmation.
 - `screenshots/15-project-management.png`: app usage, quote, version history and lifecycle management.
 - `screenshots/16-mobile-project-management.png`: archived project management on mobile.
+- `screenshots/17-client-dialog-desktop.png`: short-viewport client dialog with visible actions.
+- `screenshots/18-client-dialog-mobile.png`: single-column form with fixed header/footer.
 
 The prototype deliberately uses lightweight HTML/CSS/JavaScript. It is a design and interaction reference, not acceptance of the future production framework or architecture.

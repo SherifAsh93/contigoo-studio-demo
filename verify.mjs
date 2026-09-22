@@ -243,6 +243,30 @@ try {
     await page.keyboard.down('Control'); await page.keyboard.press('KeyA'); await page.keyboard.up('Control');
     await page.keyboard.press('Backspace'); await page.keyboard.type(value);
   };
+  const assertClientDialogFits = async () => {
+    const layout = await page.evaluate(() => {
+      const dialog = document.querySelector('#dialog');
+      const header = document.querySelector('.client-dialog-header').getBoundingClientRect();
+      const body = document.querySelector('.client-dialog-body').getBoundingClientRect();
+      const footer = document.querySelector('.client-dialog-footer').getBoundingClientRect();
+      const controls = [...dialog.querySelectorAll('.client-dialog-header button, .client-dialog-footer button')];
+      const input = document.querySelector('#client-name');
+      const style = getComputedStyle(input);
+      return {
+        actionsVisible: controls.every(button => {
+          const r = button.getBoundingClientRect();
+          return r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth && button.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+        }),
+        bodyBetweenHeaderAndFooter: body.top >= header.bottom - 1 && body.bottom <= footer.top + 1,
+        noOuterScroll: dialog.scrollHeight <= dialog.clientHeight + 1 && dialog.scrollWidth <= dialog.clientWidth + 1,
+        focusGap: input.getBoundingClientRect().top - parseFloat(style.outlineWidth) - parseFloat(style.outlineOffset) - document.querySelector('label[for="client-name"]').getBoundingClientRect().bottom,
+      };
+    });
+    assert(layout.actionsVisible, 'Client dialog close/cancel/save controls must be visible and clickable');
+    assert(layout.bodyBetweenHeaderAndFooter, 'Only the field area should scroll between fixed header/footer');
+    assert(layout.noOuterScroll, 'Client dialog shell must not overflow');
+    assert(layout.focusGap >= 1, 'Input focus outline must not overlap its label');
+  };
   page.on('pageerror', error => { errors.push(error.message); console.error('Browser runtime error:', error.message); });
   page.on('response', response => { if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`); });
   await page.setViewport({ width: 1440, height: 1080, deviceScaleFactor: 1 });
@@ -279,6 +303,23 @@ try {
   assert.equal(await page.$$eval('[data-client-row]', nodes => nodes.length), 3);
   await page.click('[data-action="new-client"]');
   assert.equal(await page.$('#new-project-template'), null);
+  await page.type('#client-name', 'Layout draft'); await page.type('#client-notes', 'Keep this while scrolling');
+  for (const viewport of [{ width: 1440, height: 1080 }, { width: 1024, height: 664 }, { width: 667, height: 830 }, { width: 390, height: 844 }, { width: 390, height: 500 }]) {
+    await page.setViewport(viewport);
+    await page.focus('#client-name'); await assertClientDialogFits();
+    await page.focus('#client-notes'); await assertClientDialogFits();
+    assert.equal(await page.$eval('#client-name', node => node.value), 'Layout draft');
+    assert.equal(await page.$eval('#client-notes', node => node.value), 'Keep this while scrolling');
+    if (viewport.width === 1024) await page.screenshot({ path: path.join(shots, '17-client-dialog-desktop.png') });
+    if (viewport.width === 390 && viewport.height === 844) await page.screenshot({ path: path.join(shots, '18-client-dialog-mobile.png') });
+  }
+  await fill('#client-name', ''); await fill('#client-notes', '');
+  await page.click('#client-details-form button[type="submit"]');
+  assert.equal(await page.$eval('#dialog', node => node.open), true);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'client-name');
+  await assertClientDialogFits();
+  await page.setViewport({ width: 1440, height: 1080, deviceScaleFactor: 1 });
+  results.push({ name: 'Client dialogs keep header/actions clickable across short, narrow and mobile viewports; fields scroll without losing values or hiding validation', status: 'passed' });
   await page.type('#client-name', 'Horizon Logistics');
   await page.type('#client-industry', 'Logistics'); await page.type('#client-contact', 'Demo Owner');
   await page.type('#client-email', 'demo@example.test'); await page.type('#client-phone', '+20 000 000');
@@ -532,6 +573,7 @@ try {
   await page.click('[data-nav="clients"]'); await page.click('[data-client-profile="client-atlas"]');
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Horizontal overflow in client profile');
   await page.click('[data-edit-client]');
+  await assertClientDialogFits();
   assert(await page.$eval('#dialog', node => node.scrollWidth <= node.clientWidth + 1), 'Horizontal overflow in client dialog');
   await page.click('[data-action="close-dialog"]');
   await openProject();
@@ -697,8 +739,8 @@ try {
   assert.equal((await fetch(url + '/app.mjs', { method: 'POST' })).status, 404);
   assert.deepEqual(errors, []);
   results.push({ name: 'Local server limits exposed files/methods; no browser runtime errors', status: 'passed' });
-  await writeFile(path.join(root, 'validation-report.json'), JSON.stringify({ date: new Date().toISOString(), scope: 'Local empty-first workspace, client/project management, publication history, visual builder, generic record runtime and illustrative quotation checks only; no production authentication, server tenancy, payment, AI integration or deployment validation.', viewport: { desktop: '1440x1080', mobile: '390x844' }, results, browserErrors: errors, screenshots: 16 }, null, 2) + '\n');
-  console.log(`PASS: ${results.length} catalog/model/browser checks. Sixteen screenshots saved under prototype/screenshots.`);
+  await writeFile(path.join(root, 'validation-report.json'), JSON.stringify({ date: new Date().toISOString(), scope: 'Local empty-first workspace, client/project management, publication history, visual builder, generic record runtime and illustrative quotation checks only; no production authentication, server tenancy, payment, AI integration or deployment validation.', viewport: { desktop: '1440x1080', mobile: '390x844', dialog: ['1024x664', '667x830', '390x500'] }, results, browserErrors: errors, screenshots: 18 }, null, 2) + '\n');
+  console.log(`PASS: ${results.length} catalog/model/browser checks. Eighteen screenshots saved under prototype/screenshots.`);
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

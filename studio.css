@@ -26,6 +26,19 @@
 @media(max-width:720px){.workspace-onboarding{padding:20px}.workspace-onboarding ol{grid-template-columns:1fr}.management-panel{padding:19px}.management-panel .section-heading{flex-wrap:wrap;gap:10px}.project-state-strip{font-size:11px}.publication-item .button{font-size:11px}.workspace-onboarding .button{font-size:11px}}
 .danger-text,.button.danger-text{color:#a44232}.button.danger{background:#a44232;color:#fffdf9}.button.danger:hover{background:#873728}
 .client-management-actions{flex-wrap:wrap}
+dialog.client-details-dialog{width:640px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);padding:0;overflow:hidden}
+dialog.client-details-dialog[open]{display:flex;flex-direction:column}
+.client-details-dialog .client-dialog-header{flex-shrink:0;margin:0;padding:24px 28px 18px;border-bottom:1px solid var(--line)}
+.client-details-dialog #client-details-form{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.client-dialog-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:20px 28px 24px}
+.client-dialog-body>p{font-size:12px;margin-bottom:20px}
+.client-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 20px}
+.client-form-field{display:flex;flex-direction:column;min-width:0;gap:9px}.client-form-field.full-width{grid-column:1/-1}
+.client-form-field .field-label,.client-form-field .input{margin:0}.client-form-field .input{min-width:0;font-family:inherit;font-size:13px}
+.client-form-field textarea{resize:vertical;min-height:76px;max-height:180px;scroll-margin-block:10px}
+.client-details-dialog .client-dialog-footer{flex-shrink:0;border-top:1px solid var(--line);background:var(--paper);padding:16px 28px 20px}
+.client-dialog-footer .dialog-actions{margin:0;flex-wrap:wrap}.client-dialog-footer .form-error{margin:0 0 10px}.client-dialog-footer .form-error:empty{display:none}
+@media(max-width:600px){.client-details-dialog .client-dialog-header{padding:18px 20px 14px}.client-dialog-body{padding:18px 20px 22px}.client-form-grid{grid-template-columns:minmax(0,1fr)}.client-form-field .input{font-size:16px}.client-details-dialog .client-dialog-footer{padding:14px 20px}.client-dialog-footer .dialog-actions>.button{flex:1;justify-content:center;white-space:normal;min-width:0}}
 .delete-summary{color:var(--ink);overflow-wrap:anywhere}.delete-project-summary{margin:18px 0;padding:15px;border:1px solid #ddc4b9;border-radius:8px;background:#f7ece6;overflow-wrap:anywhere}
 .delete-project-summary ul{padding-left:20px;max-height:180px;overflow-y:auto}.delete-project-summary li{margin:7px 0}.delete-project-summary p{font-size:11px}
 .delete-confirmation{align-items:flex-start;margin-bottom:16px;white-space:normal}.delete-confirmation input{flex-shrink:0;margin-top:4px}
