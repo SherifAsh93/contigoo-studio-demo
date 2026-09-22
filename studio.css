@@ -6,6 +6,8 @@
 @media(max-width:720px){.sidebar nav .nav-item{flex:1;min-width:0;padding:8px 4px;gap:4px;justify-content:center;font-size:8px}.sidebar nav .nav-item>span:not(.nav-count){min-width:0;white-space:normal}.sidebar nav{gap:3px}.framework-explainer{padding:15px}.framework-explainer strong{font-size:11px}}
 
 /* Client directory and Studio project entry points. */
+.brand-lockup{margin-bottom:26px}.brand-lockup .brand{margin-bottom:9px}.brand-subtitle{margin:0 11px;color:#bfc4b8;font-size:10px;line-height:1.5}
+@media(max-width:720px){.brand-lockup{margin-bottom:14px}.brand-lockup .brand{margin-bottom:6px}.brand-subtitle{text-align:center;line-height:1.4}}
 .workspace-onboarding{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:28px;margin-bottom:24px}
 .workspace-onboarding h2{margin:10px 0}.workspace-onboarding>p{max-width:750px}.workspace-onboarding .heading-actions{margin-top:20px;flex-wrap:wrap}
 .workspace-onboarding ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:25px;margin:25px 0 0;padding:20px 0 0;list-style:none;border-top:1px solid var(--line);counter-reset:journey}

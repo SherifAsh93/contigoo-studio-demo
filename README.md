@@ -1,5 +1,7 @@
 # Contigoo Studio — Presentation demo
 
+**Internal Management & Development Platform**
+
 **Current product audience:** an internal Studio + Management System for the sole owner/Super Admin/developer, with employee management accounts added after completion. Clients are records, not Studio users. Production login must accept username, email or phone plus password. The prototype's role controls and external-site illustrations are demonstrations; there is no real login or account provisioning. Private owner notes and identifiers remain outside this public-source repository.
 
 This is a working **frontend prototype** for reviewing the platform concept before VPS implementation. It includes a client directory, independent client projects, a visual app builder, a generic browser-local record/form/workflow runtime, and illustrative project quotations. It does not provide production accounts/authentication, server-enforced tenant isolation, domain-specific business engines, payment processing, checkout or deployment of generated client apps.
