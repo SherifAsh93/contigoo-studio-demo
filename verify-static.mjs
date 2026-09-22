@@ -62,6 +62,13 @@ try {
   await page.click('[data-nav="builder"]'); assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 0);
   await page.select('#project-status-filter', 'archived'); await page.click(`[data-manage-project="${projectId}"]`);
   await page.click(`[data-archive-project="${projectId}"]`);
+  await page.click(`[data-edit="${projectId}"]`); await page.click('[data-tab="fields"]');
+  await page.type('#entity-name', 'Disposable entity'); await page.click('#entity-form button');
+  await page.click('[data-delete-entity="Disposable entity"]'); await page.click('#delete-entity-form button[type="submit"]');
+  assert.equal(await page.$('[data-shared-entity="Disposable entity"]'), null);
+  await page.click('[data-tab="apps"]'); await page.click('[data-toggle-app="mobile"]');
+  await page.click('[data-run-app="mobile"]'); assert(await page.$('.mobile-runtime-dialog'));
+  await page.click('[data-action="close-dialog"]');
   await page.click('[data-nav="clients"]');
   await page.click(`[data-edit-client="${clientId}"]`); await page.type('#client-phone', '+20 000');
   await page.click('#client-details-form button[type="submit"]');

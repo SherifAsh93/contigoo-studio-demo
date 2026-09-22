@@ -2,7 +2,7 @@ import { modules, clone, enhanceClientDirectory } from './model.mjs';
 
 export const fieldTypes = ['Text', 'Email', 'Number', 'Date', 'Yes / No', 'Choice'];
 export const pageTypes = ['Dashboard', 'List', 'Form', 'Content'];
-const demoMonthly = { crm: 1500, inventory: 1200, commerce: 2000, management: 1000, projects: 800, finance: 1500, hr: 1000, helpdesk: 700, appointments: 500, website: 600, marketing: 800, analytics: 500 };
+const demoMonthly = { crm: 1500, inventory: 1200, commerce: 2000, management: 1000, projects: 800, finance: 1500, hr: 1000, helpdesk: 700, appointments: 500, website: 600, marketing: 800, analytics: 500, mobile: 0 };
 export const catalog = state => [...modules, ...(state.customApps || [])];
 
 export function moneyToCents(value) {

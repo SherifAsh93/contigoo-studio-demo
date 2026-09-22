@@ -12,6 +12,7 @@ export const modules = [
   { id: 'website', name: 'Website & CMS', icon: 'globe', category: 'Commerce', color: 'sand', description: 'A branded home for every client business.' },
   { id: 'marketing', name: 'Marketing', icon: 'spark', category: 'Customer', color: 'lilac', description: 'Campaigns and journeys built around customers.' },
   { id: 'analytics', name: 'Analytics', icon: 'chart', category: 'Operations', color: 'sage', description: 'Turn connected information into a clearer view.' },
+  { id: 'mobile', name: 'Mobile app', icon: 'phone', category: 'Mobile', color: 'blue', description: 'Mobile-first pages and forms with a phone-sized browser preview.' },
 ];
 
 // Retained only for existing demo projects and compatibility. Not presented as primary starters.
@@ -31,6 +32,7 @@ export const templates = [
   { id: 'commerce-framework', name: 'Website & E-commerce', industry: 'Commerce framework', description: 'Combine a website, online store and inventory according to your project.', apps: ['website', 'commerce', 'inventory'], color: '#936753', tint: '#e8dbd0', icon: 'globe', entities: ['Product', 'Order'], fields: [] },
   { id: 'service-framework', name: 'Service & Support', industry: 'Service framework', description: 'Customer support, appointments and relationship workspaces.', apps: ['helpdesk', 'appointments', 'crm'], color: '#587781', tint: '#dce5e7', icon: 'chat', entities: ['Ticket', 'Service request'], fields: [] },
   { id: 'workflow-framework', name: 'Custom workflows', industry: 'Workflow framework', description: 'A flexible starting point for requests, approvals, projects and custom processes.', apps: ['management', 'projects'], color: '#6d7d66', tint: '#e1e7dc', icon: 'workflow', entities: ['Request', 'Task'], fields: [] },
+  { id: 'mobile-framework', name: 'Mobile app', industry: 'Mobile app framework', description: 'Start mobile-first pages and forms with a phone-sized browser preview. Native app delivery is not connected.', apps: ['mobile'], color: '#537078', tint: '#dae4e4', icon: 'phone', entities: ['Record'], fields: [] },
 ];
 
 export const clone = value => structuredClone(value);
@@ -163,6 +165,17 @@ export function addEntity(client, name) {
   if (client.draft.entities.some(entity => entity.toLowerCase() === clean.toLowerCase())) throw new Error('That entity already exists.');
   client.draft.entities.push(clean);
   client.dirty = true;
+}
+
+export function deleteEntity(project, name, { deleteFields = false } = {}) {
+  if (project.archived) throw new Error('Reactivate the project before changing its shared data.');
+  if (!project.draft.entities.includes(name)) throw new Error('Shared entity not found.');
+  const fields = project.draft.fields.filter(field => field.entity === name);
+  if (fields.length && deleteFields !== true) throw new Error('Confirm deletion of this entity and its shared fields.');
+  project.draft.entities = project.draft.entities.filter(entity => entity !== name);
+  project.draft.fields = project.draft.fields.filter(field => field.entity !== name);
+  project.dirty = true;
+  return fields.length;
 }
 
 export function addField(client, input) {

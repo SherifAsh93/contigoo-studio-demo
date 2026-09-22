@@ -8,6 +8,8 @@ This is a working **frontend prototype** for reviewing the platform concept befo
 
 **v0.5 — Studio + management:** new workspaces start empty. **Projects & solutions** is the single project entry point: create a project with a blank or optional framework starting point, then choose **Manage** or **Open in Studio**. Manage includes app use, quotes, retained publications, archive/reactivate and independent project deletion. Clients retain Create/View/Edit/Delete. Framework starters are inside project creation, not a separate navigation destination.
 
+**v0.6 additions:** Shared data now explains entities/fields/records and provides entity deletion with field-impact confirmation. **Mobile app** is the thirteenth catalog module, with an optional starter and phone-sized working browser preview. Native builds and PWA installation are not implemented.
+
 ## Open the sample
 
 From the repository directory, with Node.js 22.13+ and npm:
@@ -73,7 +75,7 @@ One client can own zero, one or several projects. Projects have independent app 
 
 ### Start with a project, not an industry product
 
-**Create new project → Start from scratch** is the default. Choose modules freely on the next screen. Optional **Framework starters** are CRM, ERP / Business suite, Finance, Inventory & Operations, HR & People, Website & E-commerce, Service & Support, and Custom workflows. Their module selections are visible before creation and remain editable.
+**Create new project → Start from scratch** is the default. Choose modules freely on the next screen. Optional **Framework starters** are CRM, ERP / Business suite, Finance, Inventory & Operations, HR & People, Website & E-commerce, Service & Support, Custom workflows and Mobile app. Their module selections are visible before creation and remain editable.
 
 **Custom workflows** preselects Management and Projects for processes such as requests and task tracking. Configure the fields, pages and simple rules yourself; it does not automatically implement a complete approval process.
 
@@ -98,6 +100,24 @@ The target product is an AI-assisted visual IDE with a project explorer, canvas,
 In **App library**, choose the **Working project** explicitly before adding or editing apps. With no project selected, browsing shows default demo prices and project-dependent actions are disabled. Creating one app follows the same project flow as assembling a larger solution.
 
 This is a component-driven builder, not an unrestricted generator for any possible business system. Real inventory accounting, checkout, payroll and other specialized logic still need reusable production engines.
+
+### Understand and manage Shared data
+
+- **Entity:** a record type, like Product or Request—similar to a table.
+- **Field:** one detail/column on that record, such as Name, Price or Active.
+- **Record:** one actual item/row, such as Product “Notebook” with price 65.
+
+**Projects & solutions → Open in Studio → Shared data** lists every entity with its field count and **Delete** action. The confirmation lists related shared fields; deleting removes the entity and those fields from this project's draft. Other entities, app-specific definitions/records, quotes and published versions are preserved. Cancel or a persistence failure keeps the entity. If the last shared entity is removed, Add field is disabled until another entity is created.
+
+Shared data is project-level preview metadata in this prototype; it is not automatically connected to the individual apps. Use **Edit app → Data & fields** for working app forms and records. Creating an Employee entity, for example, does not create a Studio login account.
+
+### Select and design a Mobile app
+
+Choose **Mobile app** on a project's Apps tab, or **App library → Mobile** with a working project selected. New projects can also use the optional **Mobile app** starter.
+
+Use **Edit app** to configure its data, pages and simple rules. **Preview app** opens a phone-sized layout with functional generated forms and browser-local record CRUD. The initial EGP 0 monthly/setup rate is an editable placeholder, not an approved/free commercial offering; set project/default prices as needed.
+
+This does not generate APK/IPA files, publish to app stores or install a PWA. Native Android/iOS versus installable-web delivery, device features, offline behavior and packaging must be scoped before implementing that delivery pipeline. The option does not grant clients access to Studio or implement real authentication.
 
 ### Set prices while assembling the project
 
@@ -132,7 +152,7 @@ Tests use the pinned Puppeteer Core development dependency and an installed Chro
 
 `npm run test:static` builds the allowlisted `dist/` output and verifies assets, module loading, project creation, pricing and generated forms beneath the GitHub Pages URL prefix. Planning documents, credentials, localStorage contents, test output and development files are excluded from the site build.
 
-The 43 model/browser checks cover empty-first onboarding, unified project creation, client CRUD, project management/daily use, archive/reactivate, independent project deletion, version history/preview, storage failures, client isolation in local state, compatibility/migration, app building/reuse, quotes, rules, safe rendering and desktop/mobile layouts. Client-dialog checks verify visible/clickable actions, contained scrolling, focus spacing, retained input and validation at desktop, 1024×664, 667×830, mobile and 390×500 viewports. Static checks cover the core journey beneath the GitHub Pages repository subpath. They do not prove backend security, AI integration or production readiness. Screenshots with named sample clients use explicitly injected test fixtures, not default workspace data.
+The 48 model/browser checks cover the earlier management/builder/runtime flows plus shared-entity deletion, field cleanup, publication/app-data preservation, empty-state recovery and Mobile app selection/editing/pricing/phone-preview records. Client-dialog checks verify visible/clickable actions, contained scrolling, focus spacing, retained input and validation at desktop, 1024×664, 667×830, mobile and 390×500 viewports. Static checks cover the core journey beneath the GitHub Pages repository subpath. They do not prove backend security, native packaging/PWA installation, AI integration or production readiness. Screenshots with named sample clients use explicitly injected test fixtures, not default workspace data.
 
 - `validation-report.json`: completed prototype checks.
 - `screenshots/01-studio-overview.png`: your administrator overview.
@@ -153,5 +173,7 @@ The 43 model/browser checks cover empty-first onboarding, unified project creati
 - `screenshots/16-mobile-project-management.png`: archived project management on mobile.
 - `screenshots/17-client-dialog-desktop.png`: short-viewport client dialog with visible actions.
 - `screenshots/18-client-dialog-mobile.png`: single-column form with fixed header/footer.
+- `screenshots/19-shared-data-entities.png`: entity definitions, explanations and delete controls.
+- `screenshots/20-mobile-app-preview.png`: working phone-sized browser preview and saved local record.
 
 The prototype deliberately uses lightweight HTML/CSS/JavaScript. It is a design and interaction reference, not acceptance of the future production framework or architecture.

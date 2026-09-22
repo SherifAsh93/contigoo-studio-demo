@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { createPrototypeServer } from './server.mjs';
-import { createClient, createProject, saveClientProfile, deleteClientProfile, updateProjectDetails, initialState as freshState, publishClient, publicationHistory, setProjectArchived, deleteProject, addEntity, addField, toggleApp, templates, modules, STORAGE_KEY } from './model.mjs';
+import { createClient, createProject, saveClientProfile, deleteClientProfile, updateProjectDetails, initialState as freshState, publishClient, publicationHistory, setProjectArchived, deleteProject, addEntity, deleteEntity, addField, toggleApp, templates, modules, STORAGE_KEY } from './model.mjs';
 import { legacyDemoState as initialState } from './test-fixtures.mjs';
 import { enhanceState, catalog, quoteFor, moneyToCents, setProjectPrice, setQuoteSettings, definitionFor, createCustomApp, addAppField, addWorkflow, saveDemoRecord, recordsFor, reusableTemplate } from './builder-model.mjs';
 
@@ -52,8 +52,9 @@ check('Project archive/reactivation and deletion preserve the client, other proj
   assert.deepEqual(state.clients, other); assert.deepEqual(state.clientProfiles, clients); assert.deepEqual(state.priceBook, prices);
 });
 
-check('Sample registry: module identifiers are unique and the twelve starter modules are available', () => {
-  assert.equal(modules.length, 12); assert.equal(new Set(modules.map(module => module.id)).size, modules.length);
+check('Sample registry: thirteen distinct modules include the selectable Mobile app capability', () => {
+  assert.equal(modules.length, 13); assert.equal(new Set(modules.map(module => module.id)).size, modules.length);
+  assert.equal(modules.find(module => module.id === 'mobile').category, 'Mobile');
 });
 
 check('Starters: blank is default, categories use valid distinct modules, legacy projects remain compatible', () => {
@@ -87,6 +88,51 @@ check('Model: entities and fields reject duplicates and invalid references/types
   assert.throws(() => addField(a, { label: 'X', entity: 'Request', type: 'Script' }), /supported/);
   addField(a, { label: 'Delivery', entity: 'Request', type: 'Date', required: true });
   assert.throws(() => addField(a, { label: 'delivery', entity: 'Request', type: 'Date' }), /already/);
+});
+
+check('Shared entity deletion: field consent and invalid references fail atomically; app data, prices and published versions are preserved', () => {
+  const state = enhanceState(initialState()); const project = state.clients[1];
+  addField(project, { entity: 'Request', label: 'Risk', type: 'Text' });
+  addField(project, { entity: 'Item', label: 'Code', type: 'Text' });
+  const def = definitionFor(state, project, 'inventory');
+  saveDemoRecord(project, 'inventory', def, 'records', { name: 'Keep inventory record', quantity: 3, status: 'New' });
+  publishClient(project);
+  const before = structuredClone(project); const other = structuredClone(state.clients[0]);
+  assert.throws(() => deleteEntity(project, 'Missing'), /not found/);
+  assert.throws(() => deleteEntity(project, 'Request'), /Confirm deletion/);
+  assert.throws(() => deleteEntity(project, 'Request', { deleteFields: 'true' }), /Confirm deletion/);
+  assert.deepEqual(project, before);
+  assert.equal(deleteEntity(project, 'Request', { deleteFields: true }), 2);
+  assert.deepEqual(project.draft.entities, ['Item']);
+  assert.equal(project.draft.fields.length, 1); assert.equal(project.draft.fields[0].label, 'Code');
+  assert.equal(project.dirty, true);
+  for (const key of ['published', 'publications', 'demoRecords', 'workflowLog']) assert.deepEqual(project[key], before[key]);
+  assert.deepEqual(project.draft.appDefinitions, before.draft.appDefinitions);
+  assert.deepEqual(project.draft.quote, before.draft.quote); assert.deepEqual(state.clients[0], other);
+});
+check('Shared entity deletion: remove the last entity, preserve empty state across reload, then add a replacement', () => {
+  const state = enhanceState(initialState()); const project = createClient('Empty shared data'); state.clients.push(project); enhanceState(state);
+  assert.equal(deleteEntity(project, 'Record'), 0);
+  const reloaded = enhanceState(JSON.parse(JSON.stringify(state))).clients.find(item => item.id === project.id);
+  assert.deepEqual(reloaded.draft.entities, []); assert.deepEqual(reloaded.draft.fields, []);
+  assert.throws(() => addField(reloaded, { entity: 'Record', label: 'Old field', type: 'Text' }), /existing entity/);
+  addEntity(reloaded, 'Replacement'); addField(reloaded, { entity: 'Replacement', label: 'Value', type: 'Text' });
+  setProjectArchived(reloaded, true);
+  assert.throws(() => deleteEntity(reloaded, 'Replacement', { deleteFields: true }), /Reactivate/);
+});
+check('Mobile app: category starter, editable placeholder prices and reusable record/rule model remain project-specific', () => {
+  const state = enhanceState(initialState()); const owner = state.clientProfiles[1];
+  const a = createProject(state, { clientId: owner.id, name: 'Phone app A', templateId: 'mobile-framework' });
+  const b = createProject(state, { clientId: owner.id, name: 'Phone app B', templateId: 'mobile-framework' });
+  enhanceState(state); assert.deepEqual(a.draft.apps, ['mobile']); assert.equal(quoteFor(a.draft).monthly, 0);
+  const def = definitionFor(state, a, 'mobile');
+  addWorkflow(def, { name: 'Start work', entityId: 'records', action: 'set', targetField: 'status', value: 'In progress' });
+  const record = saveDemoRecord(a, 'mobile', def, 'records', { name: 'Mobile record', status: 'New' });
+  assert.equal(record.values.status, 'In progress'); assert.equal(recordsFor(b, 'mobile', 'records').length, 0);
+  setProjectPrice(state, a, 'mobile', '100', '20'); publishClient(a);
+  toggleApp(a, 'mobile'); assert.equal(quoteFor(a.draft).monthly, 0);
+  toggleApp(a, 'mobile'); assert.equal(quoteFor(a.draft).monthly, 10000);
+  assert.equal(a.published.quote.prices.mobile.monthly, 10000); assert.equal(quoteFor(b.draft).monthly, 0);
 });
 
 check('Migration: existing client IDs, branding, shared fields and published snapshots survive', () => {
@@ -734,13 +780,86 @@ try {
   assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clientProfiles.length, STORAGE_KEY), 3);
   results.push({ name: 'Project management supports daily app use, retained version previews, archive/reactivate, pending-change filters and independent project deletion on desktop/mobile', status: 'passed' });
 
+  await page.evaluate((key, fixture) => localStorage.setItem(key, JSON.stringify(fixture)), STORAGE_KEY, initialState());
+  await page.reload({ waitUntil: 'networkidle0' }); await page.setViewport({ width: 1440, height: 1080 });
+  await openProject(); await page.click('[data-tab="fields"]');
+  assert(await page.$eval('.data-concepts', node => node.textContent.includes('Entity = a type of record') && node.textContent.includes('Field = a detail')));
+  await page.type('#entity-name', 'Temporary'); await page.click('#entity-form button');
+  assert.equal(await page.$eval('#field-entity', node => node.value), 'Temporary');
+  await page.type('#field-name', 'Temporary detail'); await page.click('#field-form button[type="submit"]');
+  await page.screenshot({ path: path.join(shots, '19-shared-data-entities.png'), fullPage: true });
+  await page.click('[data-action="publish"]');
+  const beforeEntityDelete = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+  await page.click('[data-delete-entity="Temporary"]');
+  assert(await page.$eval('#dialog', node => node.textContent.includes('Temporary detail') && node.textContent.includes('1 shared field')));
+  await page.click('#delete-entity-form [data-action="close-dialog"]');
+  assert.deepEqual(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY), beforeEntityDelete);
+  await page.click('[data-delete-entity="Temporary"]');
+  await page.evaluate(() => { window.originalStorageSet = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new Error('Storage unavailable'); }; });
+  await page.click('#delete-entity-form button[type="submit"]');
+  assert(await page.$eval('#delete-entity-form .form-error', node => node.textContent.includes('kept unchanged')));
+  await page.evaluate(() => { Storage.prototype.setItem = window.originalStorageSet; delete window.originalStorageSet; });
+  await page.click('#delete-entity-form [data-action="close-dialog"]');
+  assert(await page.$('[data-shared-entity="Temporary"]'));
+  await page.click('[data-delete-entity="Temporary"]'); await page.click('#delete-entity-form button[type="submit"]');
+  assert.equal(await page.$('[data-shared-entity="Temporary"]'), null);
+  assert.equal(await page.$eval('#live-preview', node => node.textContent.includes('Temporary detail')), false);
+  assert.deepEqual(await page.$$eval('#field-entity option', nodes => nodes.map(node => node.value)), ['Request', 'Item']);
+  const afterEntityDelete = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+  assert.deepEqual(afterEntityDelete.clients.find(item => item.id === 'atlas').published, beforeEntityDelete.clients.find(item => item.id === 'atlas').published);
+  assert.deepEqual(afterEntityDelete.clients.find(item => item.id === 'noura'), beforeEntityDelete.clients.find(item => item.id === 'noura'));
+  for (const entity of ['Request', 'Item']) { await page.click(`[data-delete-entity="${entity}"]`); await page.click('#delete-entity-form button[type="submit"]'); }
+  assert(await page.$eval('#field-form button[type="submit"]', node => node.matches(':disabled')));
+  await page.reload({ waitUntil: 'networkidle0' }); await openProject(); await page.click('[data-tab="fields"]');
+  assert.equal(await page.$$eval('[data-shared-entity]', nodes => nodes.length), 0);
+  await page.type('#entity-name', 'Replacement'); await page.click('#entity-form button');
+  assert.equal(await page.$eval('#field-form button[type="submit"]', node => node.matches(':disabled')), false);
+  await page.setViewport({ width: 390, height: 844 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Shared data overflows on mobile');
+  results.push({ name: 'Shared data explains entity/field/record, confirms deletion, survives storage failure and reload, preserves publications and recovers from no entities', status: 'passed' });
+
+  await page.setViewport({ width: 1440, height: 1080 });
+  await page.click('[data-nav="builder"]'); await page.click('[data-action="new-project"]');
+  await page.select('#new-project-client', 'client-atlas'); await page.type('#new-project-name', 'Mobile operations');
+  await page.select('#new-project-template', 'mobile-framework');
+  assert(await page.$eval('#starter-detail', node => node.textContent.includes('Mobile app')));
+  await page.click('#new-project-form button[type="submit"]');
+  const mobileProjectId = await page.$eval('#client-select', node => node.value);
+  assert.equal(await page.$$eval('.module-select.selected', nodes => nodes.length), 1);
+  assert.equal(await page.$eval('#project-monthly', node => node.textContent), 'EGP 0');
+  assert(await page.$eval('.mobile-capability-note', node => node.textContent.includes('not connected') && node.textContent.includes('placeholder')));
+  await page.click('[data-edit-app="mobile"]'); await page.type('#app-field-label', 'Reference');
+  await page.click('#app-field-required'); await page.click('#app-field-form button[type="submit"]');
+  const referenceId = await page.evaluate((key, id) => JSON.parse(localStorage.getItem(key)).clients.find(item => item.id === id).draft.appDefinitions.mobile.entities[0].fields.find(field => field.label === 'Reference').id, STORAGE_KEY, mobileProjectId);
+  await page.click('[data-run-app="mobile"]');
+  assert(await page.$eval('#dialog', node => node.classList.contains('mobile-runtime-dialog') && node.getBoundingClientRect().width <= 431));
+  await page.click('[data-runtime-page="form"]');
+  await page.type('#runtime-record-form input[name="name"]', 'Phone record');
+  await page.select('#runtime-record-form select[name="status"]', 'New');
+  await page.type(`#runtime-record-form input[name="${referenceId}"]`, 'M-001');
+  await page.click('#runtime-record-form button[type="submit"]');
+  assert(await page.$eval('.runtime-table', node => node.textContent.includes('Phone record') && node.textContent.includes('M-001')));
+  await page.screenshot({ path: path.join(shots, '20-mobile-app-preview.png'), fullPage: true });
+  await page.setViewport({ width: 390, height: 844 });
+  assert(await page.$eval('#dialog', node => node.scrollWidth <= node.clientWidth + 1), 'Mobile app preview overflows');
+  await page.click('[data-action="close-dialog"]'); await page.click('[data-nav="project"]');
+  await page.click('[data-nav="apps"]'); await page.click('[data-category="Mobile"]');
+  assert.equal(await page.$$eval('.library-card', nodes => nodes.length), 1);
+  await page.click('[data-add-app="mobile"]');
+  assert.equal(await page.$eval('#client-select', node => node.value), mobileProjectId);
+  await page.reload({ waitUntil: 'networkidle0' }); await openProject(mobileProjectId);
+  await page.click('[data-run-app="mobile"]'); await page.click('[data-runtime-page="list"]');
+  assert(await page.$eval('.runtime-table', node => node.textContent.includes('Phone record')));
+  await page.click('[data-action="close-dialog"]');
+  results.push({ name: 'Mobile app can be selected from a starter or catalog, edited visually, previewed in a phone layout and used for persistent local records', status: 'passed' });
+
   assert.equal((await fetch(url + '/PROJECT_CONTEXT.md')).status, 404);
   assert.equal((await fetch(url + '/test-fixtures.mjs')).status, 404);
   assert.equal((await fetch(url + '/app.mjs', { method: 'POST' })).status, 404);
   assert.deepEqual(errors, []);
   results.push({ name: 'Local server limits exposed files/methods; no browser runtime errors', status: 'passed' });
-  await writeFile(path.join(root, 'validation-report.json'), JSON.stringify({ date: new Date().toISOString(), scope: 'Local empty-first workspace, client/project management, publication history, visual builder, generic record runtime and illustrative quotation checks only; no production authentication, server tenancy, payment, AI integration or deployment validation.', viewport: { desktop: '1440x1080', mobile: '390x844', dialog: ['1024x664', '667x830', '390x500'] }, results, browserErrors: errors, screenshots: 18 }, null, 2) + '\n');
-  console.log(`PASS: ${results.length} catalog/model/browser checks. Eighteen screenshots saved under prototype/screenshots.`);
+  await writeFile(path.join(root, 'validation-report.json'), JSON.stringify({ date: new Date().toISOString(), scope: 'Local client/project management, shared metadata, browser mobile preview, visual builder, generic runtime and illustrative quotations only; no production authentication, native packaging/PWA installation, server tenancy, payment, AI integration or VPS validation.', viewport: { desktop: '1440x1080', mobile: '390x844', dialog: ['1024x664', '667x830', '390x500'] }, results, browserErrors: errors, screenshots: 20 }, null, 2) + '\n');
+  console.log(`PASS: ${results.length} catalog/model/browser checks. Twenty screenshots saved under prototype/screenshots.`);
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

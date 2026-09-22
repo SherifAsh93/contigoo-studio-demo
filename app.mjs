@@ -1,4 +1,4 @@
-import { modules, templates, initialState, createProject, saveClientProfile, deleteClientProfile, updateProjectDetails, publishClient, publicationHistory, setProjectArchived, deleteProject, toggleApp, addEntity, addField, STORAGE_KEY } from './model.mjs';
+import { modules, templates, initialState, createProject, saveClientProfile, deleteClientProfile, updateProjectDetails, publishClient, publicationHistory, setProjectArchived, deleteProject, toggleApp, addEntity, deleteEntity, addField, STORAGE_KEY } from './model.mjs';
 import { catalog, enhanceState, quoteFor, definitionFor } from './builder-model.mjs';
 import { createStudioUI } from './studio-ui.mjs';
 
@@ -30,6 +30,7 @@ const paths = {
   code: '<path d="m8 6-6 6 6 6m8-12 6 6-6 6M14 3l-4 18"/>',
   upload: '<path d="M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6"/>',
   trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>',
+  phone: '<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 5h4M11 19h2"/>',
 };
 const icon = (name, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.grid}</svg>`;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -185,7 +186,7 @@ function projectOptions(placeholder = false) {
 
 function appsView() {
   const filtered = allModules().filter(app => (category === 'All apps' || app.category === category) && `${app.name} ${app.description}`.toLowerCase().includes(query.toLowerCase()));
-  return `${pageTitle('REUSABLE CAPABILITIES', 'Choose an app. Or build your own.', 'Select the project you want to work on. Apps and custom-app edits belong to that project.', `<div class="heading-actions"><button class="button secondary" data-price-book>Default price list</button><button class="button primary" data-new-custom-app ${current() ? '' : 'disabled'}>+ Create custom app</button></div>`)}<section class="library-project-context"><label class="field-label" for="library-project">Working project<select id="library-project" class="input">${projectOptions(true)}</select></label><button class="button secondary" data-action="new-project">+ New project</button>${current() ? `<button class="text-button" data-edit="${current().id}">Open project ${icon('arrow', 16)}</button>` : '<p>Choose or create a project above to add apps or build your own. Browsing shows default demo prices.</p>'}</section><div class="filter-pills">${['All apps', 'Customer', 'Operations', 'Commerce', 'People', 'Custom'].map(label => `<button class="filter-pill ${category === label ? 'active' : ''}" data-category="${label}">${label}</button>`).join('')}</div><section class="library-grid">${filtered.map(app => appCard(app)).join('')}</section>`;
+  return `${pageTitle('REUSABLE CAPABILITIES', 'Choose an app. Or build your own.', 'Select the project you want to work on. Apps and custom-app edits belong to that project.', `<div class="heading-actions"><button class="button secondary" data-price-book>Default price list</button><button class="button primary" data-new-custom-app ${current() ? '' : 'disabled'}>+ Create custom app</button></div>`)}<section class="library-project-context"><label class="field-label" for="library-project">Working project<select id="library-project" class="input">${projectOptions(true)}</select></label><button class="button secondary" data-action="new-project">+ New project</button>${current() ? `<button class="text-button" data-edit="${current().id}">Open project ${icon('arrow', 16)}</button>` : '<p>Choose or create a project above to add apps or build your own. Browsing shows default demo prices.</p>'}</section><div class="filter-pills">${['All apps', 'Customer', 'Operations', 'Commerce', 'People', 'Mobile', 'Custom'].map(label => `<button class="filter-pill ${category === label ? 'active' : ''}" data-category="${label}">${label}</button>`).join('')}</div>${category === 'Mobile' ? studio.mobileNotice() : ''}<section class="library-grid">${filtered.map(app => appCard(app)).join('')}</section>`;
 }
 
 function builder() {
@@ -198,7 +199,7 @@ function builder() {
 }
 
 function appConfig() {
-  return `<div class="panel-heading"><h3>Choose apps or build your own</h3><span class="count-pill">${current().draft.apps.length} selected</span></div><p class="muted config-intro">1. Select an app → 2. Edit app → 3. Preview app. Each selection updates the system price above.</p><button class="button primary create-app-button" data-new-custom-app>${icon('plus', 17)} Create custom app — no code</button><div class="selectable-app-grid">${allModules().map(app => appCard(app, true)).join('')}</div><div class="inline-note">${icon('sliders', 17)} Each app has its own visual builder. Configure fields, pages and simple rules instead of writing a prompt.</div>`;
+  return `<div class="panel-heading"><h3>Choose apps or build your own</h3><span class="count-pill">${current().draft.apps.length} selected</span></div><p class="muted config-intro">1. Select an app → 2. Edit app → 3. Preview app. Each selection updates the system price above.</p>${current().draft.apps.includes('mobile') ? studio.mobileNotice() : ''}<button class="button primary create-app-button" data-new-custom-app>${icon('plus', 17)} Create custom app — no code</button><div class="selectable-app-grid">${allModules().map(app => appCard(app, true)).join('')}</div><div class="inline-note">${icon('sliders', 17)} Each app has its own visual builder. Configure fields, pages and simple rules instead of writing a prompt.</div>`;
 }
 
 function brandConfig() {
@@ -208,7 +209,12 @@ function brandConfig() {
 
 function fieldConfig() {
   const config = current().draft;
-  return `<h3>Shape the data around the business</h3><p class="muted config-intro">Create an entity, then add fields to its sample form.</p><form id="entity-form" class="inline-form"><label class="sr-only" for="entity-name">New entity name</label><input id="entity-name" class="input" placeholder="New entity, e.g. Branch" maxlength="35" required><button class="button secondary" type="submit">${icon('plus', 16)} Entity</button></form><div class="small-app-tags entity-tags">${config.entities.map(entity => `<span>${esc(entity)}</span>`).join('')}</div><form id="field-form"><div class="form-row"><div><label class="field-label" for="field-entity">Entity</label><select id="field-entity" class="input">${config.entities.map(entity => `<option>${esc(entity)}</option>`).join('')}</select></div><div><label class="field-label" for="field-type">Field type</label><select id="field-type" class="input"><option>Text</option><option>Number</option><option>Date</option><option>Yes / No</option></select></div></div><label class="field-label" for="field-name">Field label</label><input id="field-name" class="input" placeholder="e.g. Delivery instructions" maxlength="45" required><div class="form-submit-row"><label class="checkbox-label"><input type="checkbox" id="field-required"> Required field</label><button class="button primary" type="submit">${icon('plus', 16)} Add field</button></div></form><div class="field-list">${config.fields.map(field => `<div class="custom-field-item"><span class="field-type-icon">${field.type === 'Number' ? '#' : field.type === 'Date' ? icon('calendar', 15) : 'Aa'}</span><div><strong>${esc(field.label)}${field.required ? ' *' : ''}</strong><small>${esc(field.entity)} · ${esc(field.type)}</small></div><button class="icon-button" data-delete-field="${field.id}" aria-label="Remove ${esc(field.label)}">${icon('trash', 16)}</button></div>`).join('') || '<p class="muted">No custom fields yet. Create the first one above.</p>'}</div><div class="inline-note">${icon('code', 17)} This sample renders configuration in the browser. Server validation and real record storage come with the platform implementation.</div>`;
+  return `<h3>Entities & fields</h3><div class="data-concepts"><p><strong>Entity = a type of record.</strong> For example, Product or Request.</p><p><strong>Field = a detail on that record.</strong> A Product can have Name (Text), Price (Number) and Active (Yes / No).</p><p><strong>Record = one actual item.</strong> For example, a Product named “Notebook” with a price of 65.</p></div>
+    <p class="muted config-intro">Shared data contains project-level definitions shown in the solution preview. For working app forms and records, use that app’s Edit app → Data & fields; those definitions are separate.</p>
+    <form id="entity-form" class="inline-form"><label class="sr-only" for="entity-name">New entity name</label><input id="entity-name" class="input" placeholder="New entity, e.g. Branch" maxlength="35" required><button class="button secondary" type="submit">${icon('plus', 16)} Add entity</button></form>
+    <div class="shared-entity-list">${config.entities.map(entity => { const count = config.fields.filter(field => field.entity === entity).length; return `<div class="shared-entity-row" data-shared-entity="${esc(entity)}"><div><strong>${esc(entity)}</strong><small>${count} shared field${count === 1 ? '' : 's'}</small></div><button class="text-button danger-text" data-delete-entity="${esc(entity)}" aria-label="Delete entity ${esc(entity)}">${icon('trash', 16)} Delete</button></div>`; }).join('') || '<p class="empty-state">No shared entities yet. Add an entity above to enable fields.</p>'}</div>
+    <form id="field-form"><fieldset class="shared-field-controls" ${config.entities.length ? '' : 'disabled'}><div class="form-row"><div><label class="field-label" for="field-entity">Entity</label><select id="field-entity" class="input">${config.entities.map(entity => `<option>${esc(entity)}</option>`).join('') || '<option value="">Create an entity first</option>'}</select></div><div><label class="field-label" for="field-type">Field type</label><select id="field-type" class="input"><option>Text</option><option>Number</option><option>Date</option><option>Yes / No</option></select></div></div><label class="field-label" for="field-name">Field label</label><input id="field-name" class="input" placeholder="e.g. Delivery instructions" maxlength="45" required><div class="form-submit-row"><label class="checkbox-label"><input type="checkbox" id="field-required"> Required field</label><button class="button primary" type="submit">${icon('plus', 16)} Add field</button></div></fieldset></form>
+    <div class="field-list">${config.fields.map(field => `<div class="custom-field-item"><span class="field-type-icon">${field.type === 'Number' ? '#' : field.type === 'Date' ? icon('calendar', 15) : 'Aa'}</span><div><strong>${esc(field.label)}${field.required ? ' *' : ''}</strong><small>${esc(field.entity)} · ${esc(field.type)}</small></div><button class="icon-button" data-delete-field="${field.id}" aria-label="Remove ${esc(field.label)}">${icon('trash', 16)}</button></div>`).join('') || '<p class="muted">No shared fields yet.</p>'}</div>`;
 }
 
 function accessConfig() {
@@ -286,7 +292,7 @@ function bindView() {
   });
   document.querySelector('#entity-form')?.addEventListener('submit', event => {
     event.preventDefault();
-    try { addEntity(current(), document.querySelector('#entity-name').value); save(); render(); toast('Entity added to this client’s configuration.'); } catch (error) { toast(error.message); }
+    try { const name = document.querySelector('#entity-name').value.trim(); addEntity(current(), name); save(); render(); document.querySelector('#field-entity').value = name; toast('Entity added to this project’s Shared data. Add its fields below.'); } catch (error) { toast(error.message); }
   });
   document.querySelector('#field-form')?.addEventListener('submit', event => {
     event.preventDefault();
@@ -301,6 +307,21 @@ function openDialog(html, className = '') {
   const dialog = document.querySelector('#dialog');
   if (dialog.open) dialog.close();
   dialog.className = className; dialog.innerHTML = html; dialog.showModal();
+}
+
+function deleteEntityDialog(name) {
+  const project = current();
+  const fields = project.draft.fields.filter(field => field.entity === name);
+  openDialog(`<div class="dialog-heading"><h2>Delete shared entity?</h2><button class="icon-button" data-action="close-dialog" aria-label="Close dialog">${icon('close')}</button></div><p class="delete-summary">Delete <strong>${esc(name)}</strong> from this project’s draft?</p><div class="delete-project-summary">${fields.length ? `<strong>${fields.length} shared field${fields.length === 1 ? '' : 's'} will also be removed:</strong><ul>${fields.map(field => `<li>${esc(field.label)} · ${esc(field.type)}</li>`).join('')}</ul>` : 'This entity has no shared fields.'}</div><p class="muted">Other entities, app-specific definitions/records and published versions are kept. This change cannot be undone in the draft.</p><form id="delete-entity-form"><p class="form-error" role="alert"></p><div class="dialog-actions"><button class="button secondary" type="button" data-action="close-dialog" autofocus>Cancel</button><button class="button danger" type="submit">${fields.length ? 'Delete entity & fields' : 'Delete entity'}</button></div></form>`);
+  document.querySelector('#delete-entity-form').addEventListener('submit', event => {
+    event.preventDefault();
+    try {
+      const updated = structuredClone(project);
+      const removed = deleteEntity(updated, name, { deleteFields: true });
+      persistManagementChange({ ...state, clients: state.clients.map(item => item.id === updated.id ? updated : item) }, 'Shared entity deleted', `${updated.name} · ${name} · ${removed} shared fields removed`);
+      document.querySelector('#dialog').close(); render(); toast('Shared entity deleted from the draft.');
+    } catch (error) { event.target.querySelector('.form-error').textContent = error.message; }
+  });
 }
 
 function clientDialog(id = '', onSaved = null, onCancel = null) {
@@ -471,6 +492,7 @@ document.addEventListener('click', event => {
   if (data.role) { current().draft.role = data.role; updateDraft(); return render(); }
   if (data.color) { current().draft.color = data.color; updateDraft(); return render(); }
   if (data.deleteField) { current().draft.fields = current().draft.fields.filter(field => field.id !== data.deleteField); updateDraft(); return render(); }
+  if (data.deleteEntity) return deleteEntityDialog(data.deleteEntity);
   if (data.action === 'new-client') return clientDialog();
   if (data.action === 'new-project') return newProject();
   if (data.action === 'project-details') return projectDetailsDialog();
