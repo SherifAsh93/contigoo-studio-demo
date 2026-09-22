@@ -17,6 +17,7 @@ export function createStudioUI(ctx) {
   const activeEntity = () => definition().entities.find(item => item.id === entityId) || definition().entities[0];
 
   function openEditor(id) {
+    if (current()?.archived) return toast('Reactivate this project to edit its apps.');
     if (!current().draft.apps.includes(id)) return toast('Add this app to the client project first.');
     appId = id; section = 'data'; entityId = definition().entities[0].id;
     save(); navigate('designer');
@@ -26,7 +27,7 @@ export function createStudioUI(ctx) {
     enhanceState(state);
     const quote = quoteFor(current().draft);
     return `<section class="project-cost-banner" aria-label="Client project quote">
-      <div><span class="eyebrow">THIS CLIENT’S SYSTEM PRICE</span><p>${quote.lines.length} selected apps · updates as you add or remove apps</p></div>
+      <div><span class="eyebrow">THIS PROJECT’S SOLUTION PRICE</span><p>${quote.lines.length} selected apps · updates as you add or remove apps</p></div>
       <div class="quote-metric"><strong id="project-monthly">${money(quote.monthly)}</strong><span>per month</span></div>
       <div class="quote-metric"><strong id="project-setup">${money(quote.setup)}</strong><span>one-time setup</span></div>
       <button class="button secondary" data-open-pricing>Edit prices ${icon('arrow', 15)}</button>
@@ -35,7 +36,7 @@ export function createStudioUI(ctx) {
   }
 
   function appPrice(id) {
-    const price = current().draft.quote?.prices[id] || state.priceBook[id] || defaultPrice(id);
+    const price = current()?.draft.quote?.prices[id] || state.priceBook[id] || defaultPrice(id);
     return `${money(price.monthly)}/mo${price.setup ? ` + ${money(price.setup)} setup` : ''}`;
   }
 
@@ -70,9 +71,11 @@ export function createStudioUI(ctx) {
   }
 
   function customAppDialog() {
+    if (current()?.archived) return toast('Reactivate this project before creating apps.');
+    if (!current()) { navigate('builder'); return toast('Choose or create a project before building an app.'); }
     enhanceState(state);
     openDialog(`<div class="dialog-heading"><div><div class="eyebrow">NO CODE. YOUR OWN APP.</div><h2>Build a custom app</h2></div><button class="icon-button" data-action="close-dialog" aria-label="Close app creation">${icon('close')}</button></div>
-      <p class="muted">For ${esc(current().draft.name)}. The app starts with a data table, editable form and dashboard. You can add more visually.</p>
+      <p class="muted">Project: ${esc(current().name)}. The app starts with a data table, editable form and dashboard. You can add more visually.</p>
       <form id="custom-app-form"><label class="field-label">App name<input class="input" name="name" id="custom-app-name" placeholder="e.g. Equipment Rentals" maxlength="60" required autofocus></label>
       <label class="field-label">First entity / record type<input class="input" name="entity" id="custom-app-entity" placeholder="e.g. Rental" maxlength="35" required></label>
       <div class="form-row"><label class="field-label">EGP / month<input class="input" name="monthly" id="custom-app-monthly" type="number" min="0" step="0.01" value="0" required></label><label class="field-label">One-time EGP setup<input class="input" name="setup" id="custom-app-setup" type="number" min="0" step="0.01" value="0" required></label></div>
@@ -88,8 +91,8 @@ export function createStudioUI(ctx) {
 
   function editorView() {
     const def = definition(); const entity = activeEntity(); entityId = entity.id;
-    return `<div class="page-heading"><div><div class="eyebrow">${esc(current().draft.name)} / VISUAL APP BUILDER</div><h1>${esc(def.name)}</h1><p>Design this app here. No code or AI prompt needed for these building blocks.</p></div><div class="heading-actions"><button class="button secondary" data-nav="builder">Back to project</button><button class="button primary" data-run-app="${appId}">${icon('eye', 17)} Preview & use app</button></div></div>
-      <div class="editor-scope"><span>${icon('sliders', 18)} Editing this client’s copy only · changes save as a local draft</span>${app().custom ? `<button class="text-button" data-save-app-template>Save as reusable app template ${icon('layers', 15)}</button>` : ''}</div>
+    return `<div class="page-heading"><div><div class="eyebrow">${esc(current().name)} / VISUAL APP BUILDER</div><h1>${esc(def.name)}</h1><p>Design this app here. No code or AI prompt needed for these building blocks.</p></div><div class="heading-actions"><button class="button secondary" data-nav="project">Back to project</button><button class="button primary" data-run-app="${appId}">${icon('eye', 17)} Preview & use app</button></div></div>
+      <div class="editor-scope"><span>${icon('sliders', 18)} Editing this project’s copy only · changes save as a local draft</span>${app().custom ? `<button class="text-button" data-save-app-template>Save as reusable app template ${icon('layers', 15)}</button>` : ''}</div>
       <div class="designer-layout"><section class="configuration-panel designer-panel"><div class="builder-tabs">${[['data', 'Data & fields'], ['pages', 'Pages & layout'], ['workflow', 'Workflows'], ['price', 'App price']].map(([key, text]) => `<button class="${section === key ? 'active' : ''}" data-designer-tab="${key}">${text}</button>`).join('')}</div><div class="configuration-body">${section === 'data' ? dataEditor(def, entity) : section === 'pages' ? pagesEditor(def) : section === 'workflow' ? workflowEditor(def, entity) : appPriceEditor()}</div></section>
       <aside class="designer-outline"><span class="eyebrow">APP STRUCTURE</span><h3>${esc(def.name)}</h3><div class="outline-counts"><span>${def.entities.length} entities</span><span>${def.pages.length} pages</span><span>${def.workflows.length} rules</span></div>
       <h4>Client navigation</h4>${def.pages.map(page => `<button class="outline-page" data-open-app-page="${page.id}">${icon(page.kind === 'Form' ? 'sliders' : page.kind === 'Dashboard' ? 'chart' : 'board', 17)}<span>${esc(page.name)}<small>${page.kind}</small></span>${icon('external', 13)}</button>`).join('')}
@@ -179,6 +182,7 @@ export function createStudioUI(ctx) {
   }
 
   function runApp(id, pageId = '') {
+    if (current()?.archived) return toast('Reactivate this project to use its apps.');
     if (!current().draft.apps.includes(id)) return toast('Add the app to this project first.');
     const def = definitionFor(state, current(), id); save();
     runtime = { clientId: current().id, appId: id, pageId: pageId || def.pages[0].id, editId: '', form: false };
@@ -258,7 +262,7 @@ export function createStudioUI(ctx) {
       }
       if ('exportQuote' in data) {
         const quote = quoteFor(current().draft);
-        const data = { type: 'Demo quotation; no payment requested', client: current().draft.name, currency: 'EGP', amounts: 'minor units / piasters', ...quote, lines: quote.lines.map(line => ({ ...line, name: catalog(state).find(item => item.id === line.id)?.name })) };
+        const data = { type: 'Demo quotation; no payment requested', client: state.clientProfiles.find(client => client.id === current().clientId)?.name, project: current().name, projectId: current().id, currency: 'EGP', amounts: 'minor units / piasters', ...quote, lines: quote.lines.map(line => ({ ...line, name: catalog(state).find(item => item.id === line.id)?.name })) };
         const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = 'contigoo-project-quote.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); return true;
       }
     } catch (error) { toast(error.message); return true; }

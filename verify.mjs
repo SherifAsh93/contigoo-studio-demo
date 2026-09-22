@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { createPrototypeServer } from './server.mjs';
-import { createClient, initialState, publishClient, addEntity, addField, toggleApp, templates, modules, STORAGE_KEY } from './model.mjs';
+import { createClient, createProject, saveClientProfile, deleteClientProfile, updateProjectDetails, initialState as freshState, publishClient, publicationHistory, setProjectArchived, deleteProject, addEntity, addField, toggleApp, templates, modules, STORAGE_KEY } from './model.mjs';
+import { legacyDemoState as initialState } from './test-fixtures.mjs';
 import { enhanceState, catalog, quoteFor, moneyToCents, setProjectPrice, setQuoteSettings, definitionFor, createCustomApp, addAppField, addWorkflow, saveDemoRecord, recordsFor, reusableTemplate } from './builder-model.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,44 @@ const shots = path.join(root, 'screenshots');
 await mkdir(shots, { recursive: true });
 const results = [];
 const check = (name, action) => { action(); results.push({ name, status: 'passed' }); };
+
+check('Fresh workspace starts empty with no fabricated clients, projects or activity', () => {
+  const state = enhanceState(freshState());
+  assert.deepEqual(state.clientProfiles, []); assert.deepEqual(state.clients, []); assert.deepEqual(state.activity, []);
+});
+
+check('Project publications retain earlier configuration and quote snapshots, including legacy versions', () => {
+  const state = enhanceState(initialState()); const project = state.clients[0];
+  const old = structuredClone(project.published);
+  const before = structuredClone(project);
+  assert.equal(publicationHistory(project).length, 1); assert.deepEqual(project, before);
+  setProjectPrice(state, project, 'crm', '99', '12'); publishClient(project);
+  setProjectPrice(state, project, 'crm', '200', '50'); publishClient(project);
+  const history = publicationHistory(project);
+  assert.deepEqual(history.map(item => item.version), [3, 2, 1]);
+  assert.deepEqual(history[2].config, old);
+  assert.equal(history[1].config.quote.prices.crm.monthly, 9900);
+  assert.equal(history[0].config.quote.prices.crm.monthly, 20000);
+  project.draft.quote.prices.crm.monthly = 55000;
+  assert.equal(project.published.quote.prices.crm.monthly, 20000);
+  assert.equal(history[0].config.quote.prices.crm.monthly, 20000);
+});
+
+check('Project archive/reactivation and deletion preserve the client, other projects, data and shared assets', () => {
+  const state = enhanceState(initialState()); const project = state.clients[1];
+  saveDemoRecord(project, 'inventory', definitionFor(state, project, 'inventory'), 'records', { name: 'Kept record', quantity: 5, status: 'New' });
+  publishClient(project);
+  const original = structuredClone(project);
+  assert.throws(() => setProjectArchived(project, 'yes'), /archive or reactivate/);
+  setProjectArchived(project, true); assert.throws(() => publishClient(project), /Reactivate/);
+  setProjectArchived(project, false);
+  const { archived, ...rest } = project; assert.equal(archived, false); assert.deepEqual(rest, original);
+  const clients = structuredClone(state.clientProfiles); const prices = structuredClone(state.priceBook);
+  const other = structuredClone(state.clients.filter(item => item.id !== project.id));
+  assert.throws(() => deleteProject(state, 'missing'), /Project not found/);
+  deleteProject(state, project.id); enhanceState(state);
+  assert.deepEqual(state.clients, other); assert.deepEqual(state.clientProfiles, clients); assert.deepEqual(state.priceBook, prices);
+});
 
 check('Sample registry: module identifiers are unique and the twelve starter modules are available', () => {
   assert.equal(modules.length, 12); assert.equal(new Set(modules.map(module => module.id)).size, modules.length);
@@ -59,6 +98,95 @@ check('Migration: existing client IDs, branding, shared fields and published sna
   assert.equal(previous.clients[3].draft.logo, 'data:image/png;base64,demo');
   assert(previous.clients[3].draft.fields.some(field => field.label === 'Owner field'));
   assert.equal(JSON.stringify(previous.clients[0].published), beforePublished);
+});
+check('Client directory migration: repeatable linking preserves complete project data, including records and published quotes', () => {
+  const state = enhanceState(initialState()); const project = state.clients[1];
+  const def = definitionFor(state, project, 'inventory');
+  saveDemoRecord(project, 'inventory', def, 'records', { name: 'Original stock', status: 'New', quantity: 8 });
+  setProjectPrice(state, project, 'inventory', '23', '45'); publishClient(project);
+  for (const item of state.clients) { delete item.clientId; delete item.name; delete item.description; }
+  delete state.clientProfiles; delete state.directoryVersion;
+  const before = structuredClone(state.clients);
+  enhanceState(state); enhanceState(state);
+  assert.equal(state.clientProfiles.length, 3);
+  for (const [index, item] of state.clients.entries()) {
+    const { clientId, name, description, ...original } = item;
+    assert.deepEqual(original, before[index]);
+    assert.equal(name, before[index].draft.name);
+    assert.equal(state.clientProfiles.find(client => client.id === clientId).name, name);
+    assert.equal(description, '');
+  }
+});
+check('Client profiles: create without projects, validate atomic edits, keep project names and branding separate', () => {
+  const state = enhanceState({ schema: 1, clients: [], activity: [] });
+  assert.throws(() => saveClientProfile(state, { name: '  ' }), /client name/);
+  assert.throws(() => saveClientProfile(state, { name: 'Test', email: 'bad' }), /valid contact email/);
+  assert.equal(state.clientProfiles.length, 0);
+  const owner = saveClientProfile(state, { name: ' Demo Client ', email: 'demo@example.test', notes: 'Some notes' });
+  assert.equal(owner.name, 'Demo Client'); assert.equal(state.clients.length, 0);
+  assert.throws(() => createProject(state, { name: 'Orphan', clientId: 'missing' }), /existing client/);
+  assert.throws(() => createProject(state, { name: '   ', clientId: owner.id }), /project name/);
+  assert.throws(() => createProject(state, { name: 'Too long', clientId: owner.id, description: 'x'.repeat(501) }), /description/);
+  assert.equal(state.clients.length, 0);
+  const project = createProject(state, { name: 'Operations', clientId: owner.id });
+  const before = structuredClone(owner);
+  assert.throws(() => saveClientProfile(state, { name: 'Invalid edit', email: 'broken' }, owner.id), /valid contact email/);
+  assert.deepEqual(owner, before);
+  saveClientProfile(state, { ...owner, name: 'Renamed client' }, owner.id);
+  updateProjectDetails(project, { name: 'Operations v2', description: 'Internal tools' });
+  assert.equal(project.draft.name, 'Demo Client'); assert.equal(project.name, 'Operations v2');
+  assert.equal(project.clientId, owner.id); assert.equal(project.draft.apps.length, 0);
+});
+check('Multiple projects per client: app edits, records, quotes and publications are independent', () => {
+  const state = enhanceState(initialState()); const owner = state.clientProfiles[1];
+  const a = createProject(state, { name: 'Portal', clientId: owner.id, templateId: 'crm-framework' });
+  const b = createProject(state, { name: 'Support', clientId: owner.id, templateId: 'crm-framework' });
+  enhanceState(state);
+  const def = definitionFor(state, a, 'crm');
+  addAppField(def, { entityId: 'records', label: 'Region', type: 'Text' });
+  saveDemoRecord(a, 'crm', def, 'records', { name: 'Synthetic contact', status: 'New' });
+  setProjectPrice(state, a, 'crm', '44', '7'); publishClient(a); a.draft.color = '#123456';
+  assert.equal(a.clientId, b.clientId); assert.notEqual(a.id, b.id);
+  assert(!definitionFor(state, b, 'crm').entities[0].fields.some(field => field.label === 'Region'));
+  assert.equal(recordsFor(b, 'crm', 'records').length, 0); assert.equal(b.published, null);
+  assert.equal(b.draft.quote.prices.crm.monthly, 150000); assert.notEqual(b.draft.color, a.draft.color);
+  assert.equal(a.published.quote.prices.crm.monthly, 4400);
+});
+
+function clientManagementFixture() {
+  const state = enhanceState(initialState());
+  const atlas = state.clients[1]; const other = state.clients[0];
+  createProject(state, { name: 'Atlas support', clientId: atlas.clientId, templateId: 'service-framework' });
+  const app = createCustomApp(state, atlas, { name: 'Shared rentals', entityName: 'Rental', monthly: '12', setup: '34' });
+  saveDemoRecord(atlas, app.id, definitionFor(state, atlas, app.id), 'records', { name: 'Atlas rental', status: 'New' });
+  reusableTemplate(state, atlas, app.id); publishClient(atlas);
+  toggleApp(other, app.id, catalog(state)); enhanceState(state);
+  saveDemoRecord(other, app.id, definitionFor(state, other, app.id), 'records', { name: 'Keep other rental', status: 'New' });
+  return state;
+}
+
+check('Client deletion: explicit related-project confirmation, atomic rejection and preservation of unrelated clients and shared templates', () => {
+  const state = clientManagementFixture(); const before = structuredClone(state);
+  assert.throws(() => deleteClientProfile(state, 'missing'), /Client not found/);
+  assert.throws(() => deleteClientProfile(state, 'client-atlas'), /Confirm deletion/);
+  assert.throws(() => deleteClientProfile(state, 'client-atlas', { deleteProjects: 'true' }), /Confirm deletion/);
+  assert.deepEqual(state, before);
+  const result = deleteClientProfile(state, 'client-atlas', { deleteProjects: true });
+  assert.equal(result.projectCount, 2);
+  assert.deepEqual(state.clients, before.clients.filter(project => project.clientId !== 'client-atlas'));
+  assert.deepEqual(state.clientProfiles, before.clientProfiles.filter(client => client.id !== 'client-atlas'));
+  assert.deepEqual(state.customApps, before.customApps); assert.deepEqual(state.priceBook, before.priceBook);
+  const reloaded = enhanceState(JSON.parse(JSON.stringify(state)));
+  assert(!reloaded.clientProfiles.some(client => client.id === 'client-atlas'));
+  assert(!reloaded.clients.some(project => project.clientId === 'client-atlas'));
+});
+check('Client deletion: standalone clients and the last client can be removed without reseeding', () => {
+  const state = enhanceState({ schema: 1, clients: [], activity: [] });
+  const client = saveClientProfile(state, { name: 'Only client' });
+  assert.equal(deleteClientProfile(state, client.id).projectCount, 0);
+  enhanceState(state);
+  assert.equal(state.clientProfiles.length, 0); assert.equal(state.clients.length, 0);
+  assert.throws(() => deleteClientProfile(state, client.id), /Client not found/);
 });
 check('Pricing: additive minor-unit totals, removal, discounts and invalid values', () => {
   const state = enhanceState(initialState()); const client = state.clients[1]; client.draft.apps = ['crm', 'inventory']; enhanceState(state);
@@ -120,23 +248,77 @@ try {
   await page.setViewport({ width: 1440, height: 1080, deviceScaleFactor: 1 });
   await page.goto(url, { waitUntil: 'networkidle0' });
   await page.evaluate(() => document.fonts.ready);
-  assert.equal(await page.$$eval('.client-card', nodes => nodes.length), 3);
+  const openProject = async (id = 'atlas') => { await page.click('[data-nav="builder"]'); await page.click(`[data-edit="${id}"]`); };
+  assert.equal(await page.$$eval('.sidebar [data-nav]', nodes => nodes.length), 4);
+  assert.equal(await page.$('[data-nav="templates"]'), null);
+  assert(await page.$eval('.workspace-onboarding', node => node.textContent.includes('No fictional clients')));
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.length, STORAGE_KEY), 0);
   await page.screenshot({ path: path.join(shots, '01-studio-overview.png'), fullPage: true });
-  results.push({ name: 'Overview loads three demo clients and local branding assets', status: 'passed' });
+  await page.click('[data-nav="builder"]'); await page.click('[data-action="new-project"]');
+  assert.equal(await page.$eval('#new-project-template', node => node.value), 'blank');
+  assert.equal(await page.$eval('#new-project-client', node => node.options.length), 1);
+  await page.click('[data-action="close-dialog"]');
+  results.push({ name: 'Fresh browser shows empty management overview and one creation flow with optional frameworks, without sample clients', status: 'passed' });
+  // Legacy examples exist only as explicitly injected compatibility fixtures, never application defaults.
+  await page.evaluate((key, fixture) => localStorage.setItem(key, JSON.stringify(fixture)), STORAGE_KEY, initialState());
+  await page.reload({ waitUntil: 'networkidle0' });
+  assert.equal(await page.$$eval('.home-client-item', nodes => nodes.length), 3);
+  results.push({ name: 'Management overview preserves saved legacy clients and projects during upgrade', status: 'passed' });
 
+  await page.click('[data-nav="apps"]');
+  assert.equal(await page.$eval('#library-project', node => node.value), '');
+  assert(await page.$eval('[data-new-custom-app]', node => node.disabled));
+  assert(await page.$$eval('[data-add-app]', nodes => nodes.every(node => node.disabled)));
+  await page.select('#library-project', 'noura');
+  await page.click('[data-add-app="inventory"]');
+  assert.equal(await page.$eval('#client-select', node => node.value), 'noura');
+  assert(await page.$eval('[data-toggle-app="inventory"]', node => node.getAttribute('aria-pressed') === 'true'));
+  results.push({ name: 'App library requires explicit project selection and adds apps to the chosen project', status: 'passed' });
+
+  await page.click('[data-nav="clients"]');
+  assert.equal(await page.$$eval('[data-client-row]', nodes => nodes.length), 3);
   await page.click('[data-action="new-client"]');
-  assert.equal(await page.$eval('#new-client-template', node => node.value), 'blank');
-  const starterNames = await page.$$eval('#new-client-template option', nodes => nodes.map(node => node.textContent));
+  assert.equal(await page.$('#new-project-template'), null);
+  await page.type('#client-name', 'Horizon Logistics');
+  await page.type('#client-industry', 'Logistics'); await page.type('#client-contact', 'Demo Owner');
+  await page.type('#client-email', 'demo@example.test'); await page.type('#client-phone', '+20 000 000');
+  await page.type('#client-address', 'Synthetic office'); await page.type('#client-notes', '<script>window.profileXss = true</script>');
+  await page.click('#client-details-form button[type="submit"]');
+  assert(await page.$eval('.client-details', node => node.textContent.includes('demo@example.test') && node.textContent.includes('<script>')));
+  assert.equal(await page.evaluate(() => window.profileXss), undefined);
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 0);
+  const horizonId = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clientProfiles.find(client => client.name === 'Horizon Logistics').id, STORAGE_KEY);
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.length, STORAGE_KEY), 3);
+  await page.click('[data-edit-client]'); await fill('#client-phone', '+20 111 111');
+  await fill('#client-notes', 'Plan an operations portal and a separate support project.');
+  await page.click('#client-details-form button[type="submit"]');
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.click('[data-nav="clients"]');
+  await page.type('#client-search', 'demo@example.test');
+  assert.equal(await page.$$eval('[data-client-row]', nodes => nodes.length), 1);
+  await page.click(`[data-client-profile="${horizonId}"]`);
+  assert(await page.$eval('.client-details', node => node.textContent.includes('+20 111 111')));
+  await page.screenshot({ path: path.join(shots, '11-client-profile.png'), fullPage: true });
+  results.push({ name: 'Client directory creates standalone profiles, edits details, safely renders notes, searches contacts and persists reloads', status: 'passed' });
+
+  await page.click('[data-nav="builder"]');
+  assert.equal(await page.$('#client-select'), null);
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 3);
+  await page.screenshot({ path: path.join(shots, '12-studio-projects.png'), fullPage: true });
+  await page.click('[data-action="new-project"]');
+  assert.equal(await page.$eval('#new-project-template', node => node.value), 'blank');
+  assert.equal(await page.$eval('#new-project-client', node => node.value), '');
+  const starterNames = await page.$$eval('#new-project-template option', nodes => nodes.map(node => node.textContent));
   assert(!starterNames.some(name => /restaurant|clothing/i.test(name)));
   assert(starterNames.some(name => name === 'ERP / Business suite'));
   assert(await page.$eval('#starter-detail', node => node.textContent.includes('No apps or app charges yet')));
   await page.screenshot({ path: path.join(shots, '10-blank-first-project.png'), fullPage: true });
-  await page.select('#new-client-template', 'erp-framework');
+  await page.select('#new-project-template', 'erp-framework');
   assert(await page.$eval('#starter-detail', node => node.textContent.includes('5 modules preselected') && node.textContent.includes('Finance')));
   await page.click('[data-action="close-dialog"]');
   results.push({ name: 'New project defaults to blank and explains category starter module/price selections', status: 'passed' });
 
-  await page.click('[data-nav="builder"]');
+  await openProject();
   assert.equal(await page.$eval('#client-select', node => node.value), 'atlas');
   assert.equal(await page.$$eval('.module-select.selected', nodes => nodes.length), 4);
   await page.screenshot({ path: path.join(shots, '02-solution-builder.png'), fullPage: true });
@@ -176,27 +358,58 @@ try {
   const snapshotName = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(client => client.id === 'atlas').published.name, STORAGE_KEY);
   assert.equal(snapshotName, 'Atlas Custom');
   await page.reload({ waitUntil: 'networkidle0' });
-  await page.click('[data-nav="builder"]'); await page.click('[data-tab="brand"]');
+  await openProject(); await page.click('[data-tab="brand"]');
   assert.equal(await page.$eval('#brand-name', node => node.value), 'Unpublished change');
   results.push({ name: 'Demo publication snapshots config; subsequent edits and reload preserve draft/published separation', status: 'passed' });
 
-  await page.click('[data-nav="templates"]'); await page.click('[data-template="erp-framework"]');
-  await page.type('#new-client-name', 'Horizon Logistics'); await page.click('#new-client-form button[type="submit"]');
+  await page.click('[data-nav="builder"]'); await page.click('[data-action="new-project"]');
+  await page.select('#new-project-template', 'erp-framework');
+  await page.select('#new-project-client', horizonId);
+  await page.type('#new-project-name', 'Horizon Operations'); await page.click('#new-project-form button[type="submit"]');
   assert.equal(await page.$$eval('.module-select.selected', nodes => nodes.length), 5);
   assert(await page.$eval('#client-select', node => node.selectedOptions[0].textContent.includes('Horizon')));
-  const newConfig = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(client => client.draft.name === 'Horizon Logistics'), STORAGE_KEY);
+  const newConfig = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(client => client.name === 'Horizon Operations'), STORAGE_KEY);
   assert(!newConfig.draft.entities.includes('Shipment')); assert.equal(newConfig.version, 0); assert.equal(newConfig.published, null);
-  results.push({ name: 'New client starts from pristine template config without another client’s customizations', status: 'passed' });
+  assert.equal(newConfig.clientId, horizonId);
+  results.push({ name: 'New project links to an existing client and starts from a pristine framework without other project customizations', status: 'passed' });
+
+  await page.click('[data-action="project-details"]');
+  await fill('#project-details-form input[name="name"]', 'Horizon Operations v2');
+  await page.type('#project-details-form textarea', 'Internal operations');
+  await page.click('#project-details-form button[type="submit"]');
+  assert.equal(await page.$eval('h1', node => node.textContent), 'Horizon Operations v2');
+  await page.click('[data-nav="clients"]'); await page.click(`[data-client-profile="${horizonId}"]`);
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 1);
+  await page.click(`[data-new-project-for="${horizonId}"]`);
+  assert.equal(await page.$eval('#new-project-client', node => node.value), horizonId);
+  await page.type('#new-project-name', 'Horizon Support'); await page.click('#new-project-form button[type="submit"]');
+  assert.equal(await page.$$eval('.module-select.selected', nodes => nodes.length), 0);
+  await page.click('[data-toggle-app="helpdesk"]');
+  const secondProjectId = await page.$eval('#client-select', node => node.value);
+  await page.click('[data-nav="builder"]'); await page.select('#project-client-filter', horizonId);
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 2);
+  await page.type('#project-search', 'v2');
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 1);
+  await page.click(`[data-edit="${newConfig.id}"]`);
+  assert.equal(await page.$$eval('.module-select.selected', nodes => nodes.length), 5);
+  assert.equal(await page.$eval('[data-toggle-app="helpdesk"]', node => node.getAttribute('aria-pressed')), 'false');
+  await page.click('[data-toggle-app="crm"]');
+  await page.select('#client-select', secondProjectId);
+  assert.equal(await page.$$eval('.module-select.selected', nodes => nodes.length), 1);
+  await page.click('[data-nav="builder"]'); await page.click('[data-clear-project-search]');
+  results.push({ name: 'One client has multiple independent projects; project search, metadata editing and reopening update only the selected project', status: 'passed' });
 
   await page.click('[data-nav="apps"]'); await page.click('[data-category="Commerce"]');
   assert.equal(await page.$$eval('.library-card', nodes => nodes.length), 2);
   await page.type('#global-search', 'Horizon'); await page.keyboard.press('Enter');
-  assert.equal(await page.$$eval('.client-card', nodes => nodes.length), 1);
+  assert.equal(await page.$$eval('[data-client-row]', nodes => nodes.length), 1);
+  await page.screenshot({ path: path.join(shots, '13-client-directory.png'), fullPage: true });
   results.push({ name: 'App category filters and client search work', status: 'passed' });
 
   // Use pristine synthetic data for the remaining visual samples.
   await page.evaluate((key, initial) => localStorage.setItem(key, JSON.stringify(initial)), STORAGE_KEY, initialState());
   await page.reload({ waitUntil: 'networkidle0' });
+  await page.click('[data-nav="builder"]');
   await page.click('[data-preview="thread"]');
   assert(await page.$eval('#dialog .storefront', node => node.textContent.includes('Thread & Co.')));
   await page.screenshot({ path: path.join(shots, '04-client-storefront.png'), fullPage: true });
@@ -207,7 +420,7 @@ try {
   await page.click('[data-action="enter-studio"]');
   results.push({ name: 'Customer storefront and standalone platform website previews open and navigate', status: 'passed' });
 
-  await page.click('[data-nav="builder"]'); await page.select('#client-select', 'thread');
+  await openProject('thread');
   await page.click('[data-tab="brand"]');
   await (await page.$('#brand-logo')).uploadFile(path.join(root, 'assets', 'logo.png'));
   await page.waitForSelector('#live-preview .store-header .client-logo');
@@ -218,7 +431,7 @@ try {
 
   await page.evaluate((key, initial) => { localStorage.setItem(key, JSON.stringify(initial)); localStorage.removeItem(`${key}-before-builder-v2`); }, STORAGE_KEY, initialState());
   await page.reload({ waitUntil: 'networkidle0' });
-  await page.click('[data-nav="builder"]');
+  await openProject();
   assert.equal(await page.$eval('#project-monthly', node => node.textContent), 'EGP 3,500');
   assert(await page.$('[data-edit-app="inventory"]'));
   await page.click('[data-new-custom-app]');
@@ -262,8 +475,18 @@ try {
   results.push({ name: 'Visual pages render safely; forms save/edit records and on-create rules execute', status: 'passed' });
 
   await page.click('[data-save-app-template]');
-  await page.click('[data-nav="templates"]'); await page.click('[data-template="blank"]');
-  await page.type('#new-client-name', 'Second Rental Client'); await page.click('#new-client-form button[type="submit"]');
+  await page.click('[data-nav="builder"]'); await page.click('[data-action="new-project"]');
+  await page.type('#new-project-name', 'Rentals portal');
+  await page.type('#new-project-description', 'Customer rentals');
+  await page.click('#project-create-client');
+  await page.click('#cancel-client');
+  assert.equal(await page.$eval('#new-project-name', node => node.value), 'Rentals portal');
+  await page.click('#project-create-client');
+  await page.type('#client-name', 'Second Rental Client'); await page.click('#client-details-form button[type="submit"]');
+  assert.equal(await page.$eval('#new-project-name', node => node.value), 'Rentals portal');
+  assert.equal(await page.$eval('#new-project-description', node => node.value), 'Customer rentals');
+  assert(await page.$eval('#new-project-client', node => node.selectedOptions[0].textContent === 'Second Rental Client'));
+  await page.click('#new-project-form button[type="submit"]');
   assert.equal(await page.$$eval('.module-select.selected', nodes => nodes.length), 0);
   assert.equal(await page.$eval('#project-monthly', node => node.textContent), 'EGP 0');
   await page.click(`[data-toggle-app="${customId}"]`);
@@ -292,28 +515,190 @@ try {
   assert.equal(publishedAmount[customId].monthly, 120075);
   await page.select('#client-select', 'atlas');
   assert.equal(await page.$eval('#project-monthly', node => node.textContent), 'EGP 4,400.5');
-  await page.reload({ waitUntil: 'networkidle0' }); await page.click('[data-nav="builder"]');
+  await page.reload({ waitUntil: 'networkidle0' }); await openProject();
   assert.equal(await page.$eval('#project-monthly', node => node.textContent), 'EGP 4,400.5');
   assert(await page.evaluate(key => localStorage.getItem(`${key}-before-builder-v2`) !== null, STORAGE_KEY));
+  const directoryBackup = await page.evaluate(key => JSON.parse(localStorage.getItem(`${key}-before-client-directory-v1`)), STORAGE_KEY);
+  assert.equal(directoryBackup.directoryVersion, undefined);
+  assert.equal(directoryBackup.clients.length, 3);
+  assert.equal(directoryBackup.clients[1].draft.name, 'Atlas Trading');
   results.push({ name: 'Project totals react to selection, overrides and discounts; quotes publish and survive reload independently', status: 'passed' });
 
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-  for (const next of ['overview', 'builder', 'templates', 'apps']) {
+  for (const next of ['overview', 'clients', 'builder', 'apps']) {
     await page.click(`[data-nav="${next}"]`);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Horizontal overflow in ${next}`);
   }
-  await page.click('[data-nav="builder"]'); await page.click(`[data-edit-app="${customId}"]`);
+  await page.click('[data-nav="clients"]'); await page.click('[data-client-profile="client-atlas"]');
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Horizontal overflow in client profile');
+  await page.click('[data-edit-client]');
+  assert(await page.$eval('#dialog', node => node.scrollWidth <= node.clientWidth + 1), 'Horizontal overflow in client dialog');
+  await page.click('[data-action="close-dialog"]');
+  await openProject();
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Horizontal overflow in project editor');
+  await page.click(`[data-edit-app="${customId}"]`);
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Horizontal overflow in app designer');
   await page.click('[data-nav="overview"]');
   await page.screenshot({ path: path.join(shots, '06-mobile-overview.png'), fullPage: true });
-  results.push({ name: 'Overview, builder, templates and app library fit a 390px mobile viewport', status: 'passed' });
+  results.push({ name: 'Management overview, client profile/dialog, project hub/editor, library and app designer fit a 390px mobile viewport', status: 'passed' });
+
+  // A legitimate empty directory must not be silently replaced with seed clients.
+  await page.evaluate(key => localStorage.setItem(key, JSON.stringify({ schema: 1, clients: [], clientProfiles: [], activity: [] })), STORAGE_KEY);
+  await page.reload({ waitUntil: 'networkidle0' });
+  assert.equal(await page.$$eval('.home-client-item', nodes => nodes.length), 0);
+  await page.click('[data-nav="apps"]'); assert(await page.$eval('[data-new-custom-app]', node => node.disabled));
+  await page.click('[data-nav="builder"]'); await page.click('[data-action="new-project"]');
+  await page.type('#new-project-name', 'First portal'); await page.click('#project-create-client');
+  await page.type('#client-name', 'First client'); await page.click('#client-details-form button[type="submit"]');
+  await page.click('#new-project-form button[type="submit"]');
+  assert.equal(await page.$eval('h1', node => node.textContent), 'First portal');
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clientProfiles.length, STORAGE_KEY), 1);
+  results.push({ name: 'Empty directory survives reload and nested client creation resumes project setup without losing inputs', status: 'passed' });
+
+  const firstProjectId = await page.$eval('#client-select', node => node.value);
+  await page.click('[data-nav="clients"]'); await page.click('[data-action="new-client"]');
+  await page.type('#client-name', 'Temporary client'); await page.click('#client-details-form button[type="submit"]');
+  const temporaryId = await page.$eval('[data-edit-client]', node => node.dataset.editClient);
+  await page.click('[data-nav="clients"]'); await page.click(`[data-edit-client="${temporaryId}"]`);
+  await fill('#client-name', 'Cancelled name'); await page.click('#cancel-client');
+  assert(await page.$eval(`[data-client-row="${temporaryId}"]`, node => node.textContent.includes('Temporary client')));
+  await page.click(`[data-edit-client="${temporaryId}"]`);
+  await fill('#client-name', 'Updated temporary client'); await fill('#client-email', 'updated@example.test');
+  await page.click('#client-details-form button[type="submit"]');
+  assert.equal(await page.$eval('h1', node => node.textContent), 'Updated temporary client');
+  await page.click('[data-nav="clients"]');
+  const beforeCancel = await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY);
+  await page.click(`[data-delete-client="${temporaryId}"]`);
+  assert.equal(await page.$('#delete-client-projects'), null);
+  await page.click('#delete-client-form [data-action="close-dialog"]');
+  assert.equal(await page.evaluate(key => localStorage.getItem(key), STORAGE_KEY), beforeCancel);
+  await page.click(`[data-delete-client="${temporaryId}"]`); await page.click('#delete-client-form button[type="submit"]');
+  assert.equal(await page.$(`[data-client-row="${temporaryId}"]`), null);
+  await page.click('[data-nav="apps"]');
+  assert.equal(await page.$eval('#library-project', node => node.value), firstProjectId);
+  await page.reload({ waitUntil: 'networkidle0' }); await page.click('[data-nav="clients"]');
+  assert.equal(await page.$$eval('[data-client-row]', nodes => nodes.length), 1);
+  results.push({ name: 'Client list provides direct editing and deletion; cancelling keeps data, standalone deletion persists and preserves the active unrelated project', status: 'passed' });
+
+  const deleteFixture = clientManagementFixture();
+  await page.evaluate((key, fixture) => localStorage.setItem(key, JSON.stringify(fixture)), STORAGE_KEY, deleteFixture);
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.click('[data-nav="builder"]'); await page.select('#project-client-filter', 'client-atlas');
+  await page.click('[data-edit="atlas"]');
+  await page.click('[data-client-profile="client-atlas"]'); await page.click('[data-delete-client="client-atlas"]');
+  assert(await page.$eval('.delete-project-summary', node => node.textContent.includes('2 related projects') && node.textContent.includes('Atlas support') && node.textContent.includes('published')));
+  assert(await page.$eval('#dialog', node => node.scrollWidth <= node.clientWidth + 1), 'Horizontal overflow in delete confirmation');
+  await page.click('#delete-client-form button[type="submit"]');
+  assert(await page.$eval('#dialog', node => node.open));
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.length, STORAGE_KEY), 4);
+  await page.click('#delete-client-projects');
+  // A real persistence failure must not delete in memory or falsely report success.
+  await page.evaluate(() => { window.originalStorageSet = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new Error('Storage unavailable'); }; });
+  await page.click('#delete-client-form button[type="submit"]');
+  assert(await page.$eval('#delete-client-form .form-error', node => node.textContent.includes('have been kept')));
+  await page.evaluate(() => { Storage.prototype.setItem = window.originalStorageSet; delete window.originalStorageSet; });
+  await page.click('#delete-client-form [data-action="close-dialog"]');
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 2);
+  await page.click('[data-delete-client="client-atlas"]'); await page.click('#delete-client-projects');
+  await page.setViewport({ width: 1440, height: 1080, deviceScaleFactor: 1 });
+  await page.screenshot({ path: path.join(shots, '14-client-delete.png'), fullPage: true });
+  await page.click('#delete-client-form button[type="submit"]');
+  assert.equal(await page.$('[data-client-row="client-atlas"]'), null);
+  assert.equal(await page.$eval('.nav-count', node => node.textContent), '2');
+  const afterDelete = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+  assert.deepEqual(afterDelete.clients, deleteFixture.clients.filter(project => project.clientId !== 'client-atlas'));
+  assert.deepEqual(afterDelete.customApps, deleteFixture.customApps); assert.deepEqual(afterDelete.priceBook, deleteFixture.priceBook);
+  await page.click('[data-nav="apps"]');
+  assert.equal(await page.$eval('#library-project', node => node.value), '');
+  assert(await page.$eval('[data-new-custom-app]', node => node.disabled));
+  await page.click('[data-nav="builder"]');
+  assert.equal(await page.$eval('#project-client-filter', node => node.value), '');
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 2);
+  await page.reload({ waitUntil: 'networkidle0' }); await page.click('[data-nav="clients"]');
+  assert.equal(await page.$('[data-client-row="client-atlas"]'), null);
+  results.push({ name: 'Client deletion requires project confirmation, survives storage errors atomically, clears stale selections and preserves other clients and reusable apps after reload', status: 'passed' });
+
+  for (const id of ['client-noura', 'client-thread']) {
+    await page.click(`[data-delete-client="${id}"]`); await page.click('#delete-client-projects');
+    await page.click('#delete-client-form button[type="submit"]');
+  }
+  await page.reload({ waitUntil: 'networkidle0' }); await page.click('[data-nav="clients"]');
+  assert.equal(await page.$$eval('[data-client-row]', nodes => nodes.length), 0);
+  await page.click('[data-nav="builder"]'); assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 0);
+  results.push({ name: 'Deleting every client and project leaves a usable empty directory after reload without restoring demo seeds', status: 'passed' });
+
+  await page.evaluate((key, fixture) => localStorage.setItem(key, JSON.stringify(fixture)), STORAGE_KEY, initialState());
+  await page.reload({ waitUntil: 'networkidle0' });
+  await page.click('[data-nav="builder"]'); await page.click('[data-manage-project="atlas"]');
+  assert.equal(await page.$eval('.publication-list', node => node.textContent.includes('No publications yet')), true);
+  await page.click('[data-edit="atlas"]');
+  await page.evaluate(() => { window.originalStorageSet = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new Error('Storage unavailable'); }; });
+  await page.click('[data-action="publish"]');
+  assert(await page.$eval('#toast', node => node.textContent.includes('kept unchanged')));
+  await page.evaluate(() => { Storage.prototype.setItem = window.originalStorageSet; delete window.originalStorageSet; });
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(project => project.id === 'atlas').version, STORAGE_KEY), 0);
+  await page.click('[data-action="publish"]');
+  await page.click('[data-tab="brand"]'); await fill('#brand-name', 'Updated project branding');
+  await page.click('[data-action="publish"]');
+  await page.click('[data-manage-project="atlas"]');
+  assert.equal(await page.$$eval('.publication-item', nodes => nodes.length), 2);
+  await page.click('[data-preview-version="1"]');
+  assert(await page.$eval('#dialog .browser-chrome', node => node.textContent.includes('v1')));
+  assert(await page.$eval('#dialog .client-top', node => node.textContent.includes('Atlas Trading')));
+  await page.click('[data-action="close-dialog"]');
+  await page.click('[data-preview-version="2"]');
+  assert(await page.$eval('#dialog .client-top', node => node.textContent.includes('Updated project branding')));
+  await page.click('[data-action="close-dialog"]');
+  await page.click('[data-run-app="inventory"]'); await page.click('[data-runtime-page="form"]');
+  await page.type('#runtime-record-form input[name="name"]', 'Managed stock item');
+  await page.select('#runtime-record-form select[name="status"]', 'New');
+  await page.type('#runtime-record-form input[name="quantity"]', '4');
+  await page.click('#runtime-record-form button[type="submit"]'); await page.click('[data-action="close-dialog"]');
+  assert.equal(await page.$eval('.metrics .metric:nth-child(2) strong', node => node.textContent), '1');
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  await page.screenshot({ path: path.join(shots, '15-project-management.png'), fullPage: true });
+  const managedProject = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(project => project.id === 'atlas'), STORAGE_KEY);
+  await page.click('[data-archive-project="atlas"]');
+  assert.equal(await page.$('[data-edit="atlas"]'), null);
+  await page.click('[data-nav="apps"]');
+  assert.equal(await page.$eval('#library-project', node => node.value), '');
+  assert.equal(await page.$('#library-project option[value="atlas"]'), null);
+  await page.click('[data-nav="builder"]');
+  assert.equal(await page.$('[data-project-row="atlas"]'), null);
+  await page.select('#project-status-filter', 'archived');
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 1);
+  await page.reload({ waitUntil: 'networkidle0' }); await page.click('[data-nav="builder"]');
+  await page.select('#project-status-filter', 'archived'); await page.click('[data-manage-project="atlas"]');
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Horizontal overflow in project management');
+  await page.screenshot({ path: path.join(shots, '16-mobile-project-management.png'), fullPage: true });
+  await page.click('[data-archive-project="atlas"]');
+  const reactivated = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clients.find(project => project.id === 'atlas'), STORAGE_KEY);
+  const { archived, ...unchanged } = reactivated;
+  assert.equal(archived, false); assert.deepEqual(unchanged, managedProject);
+  await page.click('[data-edit="atlas"]'); await page.click('[data-tab="brand"]');
+  await fill('#brand-name', 'Next draft update');
+  await page.click('[data-nav="builder"]'); await page.select('#project-status-filter', 'changes');
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 1);
+  await page.click('[data-manage-project="atlas"]');
+  await page.click('[data-delete-project="atlas"]');
+  await page.click('#delete-project-form [data-action="close-dialog"]');
+  assert.equal(await page.$eval('h1', node => node.textContent), 'Atlas Trading');
+  await page.click('[data-delete-project="atlas"]');
+  await page.click('#delete-project-form button[type="submit"]');
+  await page.reload({ waitUntil: 'networkidle0' }); await page.click('[data-nav="clients"]');
+  await page.click('[data-client-profile="client-atlas"]');
+  assert.equal(await page.$$eval('[data-project-row]', nodes => nodes.length), 0);
+  assert.equal(await page.evaluate(key => JSON.parse(localStorage.getItem(key)).clientProfiles.length, STORAGE_KEY), 3);
+  results.push({ name: 'Project management supports daily app use, retained version previews, archive/reactivate, pending-change filters and independent project deletion on desktop/mobile', status: 'passed' });
 
   assert.equal((await fetch(url + '/PROJECT_CONTEXT.md')).status, 404);
+  assert.equal((await fetch(url + '/test-fixtures.mjs')).status, 404);
   assert.equal((await fetch(url + '/app.mjs', { method: 'POST' })).status, 404);
   assert.deepEqual(errors, []);
   results.push({ name: 'Local server limits exposed files/methods; no browser runtime errors', status: 'passed' });
-  await writeFile(path.join(root, 'validation-report.json'), JSON.stringify({ date: new Date().toISOString(), scope: 'Local visual builder, generic record runtime and illustrative quotation checks only; no production authentication, server tenancy, payment, AI integration or deployment validation.', viewport: { desktop: '1440x1080', mobile: '390x844' }, results, browserErrors: errors, screenshots: 10 }, null, 2) + '\n');
-  console.log(`PASS: ${results.length} catalog/model/browser checks. Ten screenshots saved under prototype/screenshots.`);
+  await writeFile(path.join(root, 'validation-report.json'), JSON.stringify({ date: new Date().toISOString(), scope: 'Local empty-first workspace, client/project management, publication history, visual builder, generic record runtime and illustrative quotation checks only; no production authentication, server tenancy, payment, AI integration or deployment validation.', viewport: { desktop: '1440x1080', mobile: '390x844' }, results, browserErrors: errors, screenshots: 16 }, null, 2) + '\n');
+  console.log(`PASS: ${results.length} catalog/model/browser checks. Sixteen screenshots saved under prototype/screenshots.`);
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

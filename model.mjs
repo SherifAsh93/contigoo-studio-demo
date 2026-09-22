@@ -35,9 +35,77 @@ export const templates = [
 
 export const clone = value => structuredClone(value);
 
+// `clients` remains the persisted project collection for compatibility with earlier demos.
+// Client/contact records live separately; existing project IDs and snapshots stay intact.
+export function enhanceClientDirectory(state) {
+  state.clientProfiles ??= [];
+  for (const project of state.clients) {
+    project.name ??= project.draft.name;
+    project.description ??= '';
+    project.clientId ??= `client-${project.id}`;
+    if (!state.clientProfiles.some(client => client.id === project.clientId)) {
+      state.clientProfiles.push({ id: project.clientId, name: project.draft.name, industry: project.industry || '', contact: '', email: '', phone: '', address: '', notes: '' });
+    }
+  }
+  state.directoryVersion = 1;
+  return state;
+}
+
+function clientDetails(input) {
+  const result = {};
+  for (const [key, limit] of Object.entries({ name: 60, industry: 60, contact: 80, email: 120, phone: 40, address: 240, notes: 2000 })) {
+    result[key] = String(input[key] ?? '').trim();
+    if (result[key].length > limit) throw new Error(`${key} must be at most ${limit} characters.`);
+  }
+  if (!result.name) throw new Error('Enter a client name.');
+  if (result.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result.email)) throw new Error('Enter a valid contact email.');
+  return result;
+}
+
+export function saveClientProfile(state, input, id = '') {
+  const details = clientDetails(input);
+  const existing = id ? state.clientProfiles.find(client => client.id === id) : null;
+  if (id && !existing) throw new Error('Client not found.');
+  if (existing) { Object.assign(existing, details); return existing; }
+  const client = { id: crypto.randomUUID(), ...details };
+  state.clientProfiles.push(client);
+  return client;
+}
+
+export function deleteClientProfile(state, id, { deleteProjects = false } = {}) {
+  const client = state.clientProfiles.find(item => item.id === id);
+  if (!client) throw new Error('Client not found.');
+  const projects = state.clients.filter(project => project.clientId === id);
+  if (projects.length && deleteProjects !== true) throw new Error('Confirm deletion of the related projects before deleting this client.');
+  // All client-specific records, quotes and snapshots belong to these project objects.
+  // Shared app templates and prices belong to the platform and are kept.
+  state.clients = state.clients.filter(project => project.clientId !== id);
+  state.clientProfiles = state.clientProfiles.filter(item => item.id !== id);
+  return { client, projectCount: projects.length };
+}
+
+export function updateProjectDetails(project, input) {
+  const name = String(input.name ?? '').trim();
+  const description = String(input.description ?? '').trim();
+  if (!name || name.length > 60) throw new Error('Use a project name between 1 and 60 characters.');
+  if (description.length > 500) throw new Error('Use a project description of at most 500 characters.');
+  Object.assign(project, { name, description });
+}
+
+export function createProject(state, input) {
+  const owner = state.clientProfiles.find(client => client.id === input.clientId);
+  if (!owner) throw new Error('Choose an existing client for this project.');
+  const project = createClient(String(input.name ?? ''), input.templateId || 'blank');
+  updateProjectDetails(project, input);
+  project.clientId = owner.id;
+  project.draft.name = owner.name;
+  state.clients.push(project);
+  return project;
+}
+
 export function createClient(name, templateId = 'blank', id = crypto.randomUUID()) {
   const cleanName = name.trim();
-  if (!cleanName || cleanName.length > 60) throw new Error('Use a client name between 1 and 60 characters.');
+  if (!cleanName || cleanName.length > 60) throw new Error('Use a project name between 1 and 60 characters.');
   const template = [...templates, ...legacyTemplates].find(item => item.id === templateId);
   if (!template) throw new Error('Choose a valid template.');
   const draft = {
@@ -54,20 +122,38 @@ export function createClient(name, templateId = 'blank', id = crypto.randomUUID(
 }
 
 export function initialState() {
-  const clients = [createClient('Noura Restaurant', 'restaurant', 'noura'), createClient('Atlas Trading', 'company', 'atlas'), createClient('Thread & Co.', 'store', 'thread')];
-  for (const client of [clients[0], clients[2]]) {
-    client.published = clone(client.draft);
-    client.version = 1;
-    client.dirty = false;
+  return { schema: 1, clients: [], clientProfiles: [], activity: [] };
+}
+
+export function publicationHistory(project) {
+  const history = [...(project.publications || [])];
+  if (project.published && !history.some(item => item.version === project.version)) {
+    history.push({ version: project.version, publishedAt: null, config: project.published });
   }
-  return { schema: 1, clients, activity: [{ title: 'Your Studio is ready', detail: 'Three illustrative client solutions. One shared foundation.' }] };
+  return history.sort((a, b) => b.version - a.version);
+}
+
+export function setProjectArchived(project, archived) {
+  if (typeof archived !== 'boolean') throw new Error('Choose archive or reactivate.');
+  project.archived = archived;
+}
+
+export function deleteProject(state, id) {
+  const project = state.clients.find(item => item.id === id);
+  if (!project) throw new Error('Project not found.');
+  state.clients = state.clients.filter(item => item.id !== id);
+  return project;
 }
 
 export function publishClient(client) {
+  if (client.archived) throw new Error('Reactivate the project before publishing.');
   if (!client.draft.name.trim()) throw new Error('Add a business name before publishing.');
   if (!client.draft.apps.length) throw new Error('Select at least one app before publishing.');
+  const history = clone(publicationHistory(client));
   client.published = clone(client.draft);
   client.version += 1;
+  history.unshift({ version: client.version, publishedAt: new Date().toISOString(), config: clone(client.published) });
+  client.publications = history;
   client.dirty = false;
 }
 

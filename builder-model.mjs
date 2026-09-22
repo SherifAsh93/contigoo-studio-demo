@@ -1,4 +1,4 @@
-import { modules, clone } from './model.mjs';
+import { modules, clone, enhanceClientDirectory } from './model.mjs';
 
 export const fieldTypes = ['Text', 'Email', 'Number', 'Date', 'Yes / No', 'Choice'];
 export const pageTypes = ['Dashboard', 'List', 'Form', 'Content'];
@@ -22,6 +22,7 @@ function cleanLabel(value, limit = 60) {
 export function defaultPrice(id) { return { monthly: (demoMonthly[id] || 0) * 100, setup: 0 }; }
 
 export function enhanceState(state) {
+  enhanceClientDirectory(state);
   state.customApps ??= [];
   state.priceBook ??= {};
   for (const app of catalog(state)) state.priceBook[app.id] ??= defaultPrice(app.id);
